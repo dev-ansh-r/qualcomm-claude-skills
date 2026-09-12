@@ -79,6 +79,41 @@ echo "LD_LIBRARY_PATH: ${LD_LIBRARY_PATH:-unset}"
 If `converter` is MISSING but `QNN_SDK_ROOT` is set, you sourced in the wrong
 order. Start a new shell and redo it.
 
+## PYTHONPATH leaking between environments
+
+AIMET and the QAIRT converter want **different, incompatible numpy versions**.
+Teams commonly satisfy both with two virtualenvs on one host — and then get
+bitten by `PYTHONPATH`, which `activate` does **not** clear.
+
+If the AIMET step exports a `PYTHONPATH` (to reach a user-site install, say) and
+you then activate the converter venv in the same shell, that `PYTHONPATH`
+**shadows the venv's own packages**. The converter picks up the wrong numpy and
+fails inside shape inference with an error that looks like a corrupt model
+`[measured]`:
+
+```text
+/encoder_embed/Unsqueeze ... 3120 != -138557648
+```
+
+A nonsensical negative dimension in a shape-inference error is the signature.
+The model is fine.
+
+**Run each stage with the environment it needs, explicitly:**
+
+```sh
+# AIMET stage - may need a PYTHONPATH
+PYTHONPATH=/path/to/aimet/site-packages python step_quantize.py
+
+# Converter stage - must NOT inherit it
+env -u PYTHONPATH bash step_convert.sh
+```
+
+`env -u PYTHONPATH` is more reliable than remembering to unset it, and it
+survives being run from a shell where someone else already exported it.
+
+The same applies to `LD_LIBRARY_PATH` (above): **activation does not isolate
+you from variables the parent shell exported.**
+
 ## On the board
 
 Different problem — the board has no SDK, only the runtime:

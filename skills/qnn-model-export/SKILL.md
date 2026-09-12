@@ -127,12 +127,35 @@ qnn-onnx-converter \
 
 Produces `model.cpp`, `model.bin` and `model_net.json`.
 
+**Check the output filename.** Depending on how `--output_path` is spelled, the
+converter may write the source file **without a `.cpp` extension**, which then
+breaks `qnn-model-lib-generator -c`. Production scripts defend against it:
+
+```sh
+CPP=${OUT}/model.cpp
+[ -f "${OUT}/model" ] && [ ! -f "$CPP" ] && cp "${OUT}/model" "$CPP"
+```
+
+### Audit for FP16 immediately after converting
+
+On an architecture without FP16 (v68), this must be zero or the context binary
+will not build:
+
+```sh
+grep -ci "FLOAT_16\|float16\|QNN_DATATYPE_FLOAT_16" QNN_Models/model.cpp
+```
+
+Shipped pipelines run this as a **gate** on every convert, not as a diagnostic
+after something breaks `[measured]`.
+
 ### Bitwidth flags have two spellings, and both work
 
 `--act_bitwidth` / `--weights_bitwidth` and `--act_bw` / `--weight_bw` are
-**aliases**. Both are accepted by `qnn-onnx-converter` in QAIRT 2.37.1, and both
-appear in recipes that shipped `[measured]`. The converter's own resolved
-namespace carries both spellings side by side (`float_bitwidth=32; float_bw=32`).
+**aliases**. One shipped pipeline uses **both spellings in adjacent scripts** —
+`--act_bw 16 --weight_bw 8 --bias_bw 32` to convert its encoder and
+`--act_bitwidth 16 --weights_bitwidth 8 --bias_bitwidth 32` for its decoder and
+joiner, same SDK build, both working `[measured]`. The converter's own resolved
+namespace carries alias pairs side by side (`float_bitwidth=32; float_bw=32`).
 
 Also set **`--bias_bw`** (namespace: `bias_bitwidth`, default 8). One production
 W8A16 recipe uses `--act_bw 16 --weight_bw 8 --bias_bw 32` `[measured]` — bias
@@ -172,6 +195,8 @@ when you passed encodings, is caught here in seconds.
 | `--act_bitwidth 8 --weights_bitwidth 8` | W8A8. Faster and smaller; try only after W8A16 works |
 | `--input_encoding <name> other` | Keeps an input **unquantized** — required for int64 token ids |
 | `--param_quantizer tf` / `--act_quantizer tf` | TensorFlow-style symmetric. `tf_enhanced` trades outlier robustness |
+| `--act_quantizer_calibration mse` | Calibrate by minimising MSE rather than `min-max` (the default). A large win on sensitive graphs `[measured]` |
+| `--percentile_calibration_value 99.99` | With percentile calibration, where to clip |
 | `--use_per_channel_quantization` | Per-channel weights. Usually a clear accuracy win on conv |
 | `--float_bw 32` | Keep float-fallback ops at FP32, avoiding FP16 on unsupported ops |
 | `--float_fallback` | Allow unquantized ops to run in float. **Dangerous on v68 — see below** |
@@ -202,6 +227,26 @@ They are complementary, not alternatives. Confirm both landed by grepping the
 generated `.cpp` namespace (above) for a non-empty `quantization_overrides=`.
 
 `-d` is shorthand for `--input_dim`.
+
+### You do not have to quantize every sub-model the same way
+
+In a multi-model pipeline, match the effort to each graph's sensitivity. One
+shipped configuration `[measured]`:
+
+| Sub-model | Strategy |
+|---|---|
+| Encoder (large, sensitive) | AIMET encodings + `--input_list` |
+| Decoder / joiner (small) | Plain PTQ — `--input_list` only, no AIMET |
+
+AIMET on the sensitive graph, converter-internal quantization on the small ones.
+Running AIMET over everything costs time without buying accuracy where the graph
+was never the problem.
+
+**But "small" does not mean "insensitive to calibration".** In that same
+pipeline the small joiner was the graph most sensitive to *calibration data
+quality* — synthetic vectors cost ~15 accuracy points, real trace vectors
+recovered all but ~1.3 `[measured]`. Skip AIMET on the small graphs if you like;
+do not skip real calibration data. See `references/calibration.md`.
 
 ### Use `--dry_run` first, every time
 

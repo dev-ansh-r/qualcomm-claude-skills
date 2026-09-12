@@ -58,6 +58,46 @@ and gets garbage — with no error. This is a silent, total failure.
 assert arr.dtype == np.int64, arr.dtype    # cheap, catches a nasty bug
 ```
 
+## Calibration quality outranks the quantization algorithm
+
+Measured on a small downstream sub-model (a joiner) in an ASR pipeline
+`[measured]`:
+
+| Calibration set | Accuracy gap vs float |
+|---|---|
+| ~10 synthetic/random vectors | **~15 points** |
+| ~60 real trace vectors, plus `--use_per_channel_quantization --act_quantizer_calibration mse` | **~1.3 points** |
+
+Same model, same bitwidths. **This was a larger lever than the encoder's
+quantization scheme** — an order of magnitude more than any algorithm choice.
+
+The reason is that the calibration set defines the range, and a range derived
+from data that never occurs at run time is wrong no matter how good the
+rounding is. Spend your effort here first.
+
+### Include the awkward frames
+
+Real traces must cover the states the model actually meets, including the ones
+that feel like noise:
+
+- Frames where the model emits **blank**, padding, or an "unknown" token
+- Leading silence and trailing tails
+- Whatever your pipeline treats as a degenerate case
+
+A calibration set built only from confident, mid-utterance frames teaches the
+quantizer that the awkward cases do not exist — and those are exactly where a
+quantized model falls apart.
+
+### Sampling from a chained pipeline
+
+For a sub-model fed by another model's output, sample real
+`upstream_out`/`downstream_out` pairs across actual decode traces rather than
+generating plausible tensors.
+
+If a graph rewrite upstream is numerically equivalent (cosine ~1.0 against the
+original), you can generate these vectors from **either** version — a useful
+shortcut when the rewritten graph is harder to run locally.
+
 ## How many samples
 
 ~100 spanning the real input distribution is the working default `[convention]`.

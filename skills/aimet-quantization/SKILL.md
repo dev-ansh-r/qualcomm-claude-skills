@@ -321,6 +321,50 @@ print("param tensors     :", len(enc.get("param_encodings", {})))
 Zero activation encodings means `compute_encodings` never ran, or ran with an
 empty forward pass.
 
+## Gate the run, do not just eyeball it
+
+Two cheap assertions catch most silent AIMET failures.
+
+**1. Encoding counts.** Record how many activation and parameter encodings the
+export produced, and assert the same numbers on re-runs:
+
+```python
+import json
+enc = json.load(open("exported/model.encodings"))
+print(len(enc["activation_encodings"]), "act /", len(enc["param_encodings"]), "param")
+```
+
+A shipped pipeline gates on an exact pair (e.g. `1501 act / 265 param`)
+`[measured]`. If the count moves, something changed — the graph, the config, or
+the AIMET version — and you want to know before converting, not after a WER
+regression.
+
+**2. Freeze the environment, and reuse it.** One team deliberately **reuses the
+same AIMET virtualenv across model builds** rather than recreating it, so
+results stay bit-identical `[measured]`. Recreating from the same
+`requirements.txt` months later resolves different transitive dependencies and
+can move your encodings.
+
+If you must rebuild it, treat the first run as a **re-validation**: compare
+encoding counts and the task metric against the last known-good build.
+
+## When the output is garbage, suspect the layers around quantization
+
+A quantized model producing nonsense is not always a quantization problem. Two
+documented cases from the same pipeline `[measured]`:
+
+- **The post-processing layer.** A decoder skipped two special token ids but the
+  new model emitted a third on uncertain frames, so that token flooded the
+  output and the real prediction never won. Nothing was wrong with the
+  quantization. Suppressing the offending *logit* did not help either — the
+  next-highest token simply won instead; the fix was in the decode loop.
+- **The graph.** Four quantization strategies failed on a stock export until the
+  graph was rewritten into HTP-native ops before quantization.
+
+Before spending days on quantization tuning, check that the **float** model,
+run through the **same** post-processing, still behaves. That one comparison
+separates the three causes quickly.
+
 ## Handing off
 
 Copy `model.onnx` and `model.encodings` to the build host, then use the

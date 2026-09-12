@@ -1,32 +1,36 @@
 ---
 name: aimet-quantization
-description: Quantize an ONNX model for Qualcomm HTP with AIMET - QuantizationSimModel (quantsim) calibration, AdaRound adaptive weight rounding, cross-layer equalization, bias correction and automatic mixed precision - exporting a .encodings file for qairt-converter. Use for post-training quantization (PTQ), W8A16/W8A8 accuracy recovery, per-layer quantization sensitivity analysis, or when a converted model runs but its accuracy dropped. Runs on the AIMET host, not the board.
+description: Quantize an ONNX model for Qualcomm HTP with AIMET - QuantizationSimModel (quantsim) calibration, AdaRound adaptive weight rounding, cross-layer equalization, bias correction and automatic mixed precision - exporting a .encodings file consumed by qnn-onnx-converter or qairt-converter via --quantization_overrides. Use for post-training quantization (PTQ), W8A16/W8A8 accuracy recovery, per-layer quantization sensitivity analysis, or when a converted model runs but its accuracy dropped. Runs on the AIMET host, not the board.
 ---
 
 # AIMET quantization
 
 Produces a `.encodings` file: per-tensor quantization parameters that
-`qairt-converter --quantization_overrides` consumes on the QAIRT/DLC path.
+**either** converter consumes via `--quantization_overrides`.
 
 ## Where this sits
 
 ```text
-ONNX (static shapes)
+ONNX (static shapes, HTP-native ops)
    |
    |  [ this skill, on the AIMET host ]
-   |  quantsim -> calibrate -> AdaRound -> evaluate -> export
+   |  quantsim -> calibrate -> (AdaRound) -> evaluate -> export
    v
 model.encodings  +  model.onnx
    |
-   |  [ qnn-context-binary skill, on the build host ]
-   v
-qairt-converter --quantization_overrides model.encodings
+   |  --quantization_overrides   [ on the build host ]
+   |
+   +--> qnn-onnx-converter   (classic route)
+   +--> qairt-converter      (QAIRT/DLC route)
 ```
 
-**AIMET only feeds the QAIRT/DLC path.** There is no supported way to hand a
-`.encodings` file to `qnn-onnx-converter` — that tool derives quantization from
-its own calibration `--input_list`. The two are alternative quantization
-sources, not sequential stages. Repo README has the full fork.
+**AIMET feeds both routes.** `--quantization_overrides` is accepted by
+`qnn-onnx-converter` as well as `qairt-converter` `[measured]` — AIMET is not
+tied to the DLC path.
+
+**Pass `--input_list` alongside it.** The proven production recipe supplies
+both: the encodings give the ranges AIMET computed, `--input_list` gives real
+data for what they do not cover. They are complementary, not alternatives.
 
 **Run this on the AIMET host.** AIMET pins specific torch/onnx/onnxruntime
 versions that frequently conflict with the QAIRT SDK's Python environment, and
@@ -41,8 +45,8 @@ consolidate it onto the build host.
 | `aimet-onnx` | ONNX graph | **Preferred here.** Quantizes the graph you will actually convert |
 | `aimet-torch` | `torch.nn.Module` | Use when you need QAT, or the ONNX export itself is the problem |
 
-`aimet-onnx` is the better default: quantizing the exact artifact that goes to
-`qairt-converter` avoids a class of export-time drift.
+`aimet-onnx` is the better default: quantizing the exact artifact you will
+convert avoids a class of export-time drift.
 
 Install and version compatibility are genuinely fiddly — follow
 `quic.github.io/aimet-pages` for the release matrix rather than `pip install
@@ -53,21 +57,22 @@ import aimet_onnx, onnx, onnxruntime, numpy
 print(aimet_onnx.__version__, onnx.__version__, onnxruntime.__version__)
 ```
 
-### Treat the snippets below as shape, not signature
+### The API changed in AIMET 2.x — check which you have
 
-**AIMET's API surface moves between releases** — argument names, module paths
-and return values have all changed across versions, more than is typical. The
-code here shows the correct *sequence and intent*; check the exact signature for
-your installed version before running it:
+**AIMET's surface moves between releases more than is typical.** The snippets
+below are the **AIMET 2.23** form `[measured]`. On 1.x the same concepts use
+different keywords (`default_param_bw`, `default_activation_bw`,
+`QuantScheme.post_training_tf_enhanced`, and a callback-style
+`compute_encodings`).
 
 ```python
+import aimet_onnx; print(aimet_onnx.__version__)
 from aimet_onnx.quantsim import QuantizationSimModel
 help(QuantizationSimModel.__init__)
 ```
 
-and cross-check against the API reference for your release at
-`quic.github.io/aimet-pages`. If a keyword below is rejected, the sequence is
-still right — find the current name rather than abandoning the step.
+If a keyword is rejected, the *sequence* is still right — find the current name
+rather than abandoning the step.
 
 ## Stage 1 — quantsim
 
@@ -75,44 +80,73 @@ still right — find the current name rather than abandoning the step.
 the quantized model in floating point before committing to a conversion.
 
 ```python
+import onnx
 from aimet_onnx.quantsim import QuantizationSimModel
-from aimet_common.defs import QuantScheme
+from aimet_onnx.common.defs import qtype, QuantScheme
+
+# Per-HTP-architecture config shipped inside the aimet_onnx package.
+# GLOB for it - do not hardcode an architecture:
+#   ls <site-packages>/aimet_onnx/common/quantsim_config/htp_quantsim_config_*.json
+HTP_CONFIG = ".../aimet_onnx/common/quantsim_config/htp_quantsim_config_v68.json"
 
 sim = QuantizationSimModel(
-    model=onnx_model,                          # static-shape ONNX
-    quant_scheme=QuantScheme.post_training_tf_enhanced,
-    default_param_bw=8,                        # weights  -> W8
-    default_activation_bw=16,                  # acts     -> A16
-    use_cuda=True,
+    model=onnx.load(ENC),              # static-shape, HTP-native ONNX
+    param_type=qtype.int(8),           # W8
+    activation_type=qtype.int(16),     # A16  (INT16 fixed point, not FP16)
+    quant_scheme=QuantScheme.min_max,
+    config_file=HTP_CONFIG,            # targets a specific HTP architecture
 )
 ```
 
+**`config_file` is how AIMET targets your part.** The package ships one config
+per Hexagon architecture; pick the one matching your target
+(`qualcomm-env-discovery` step 4 determines it):
+
+```python
+import glob, os, aimet_onnx
+d = os.path.join(os.path.dirname(aimet_onnx.__file__), "common", "quantsim_config")
+print([os.path.basename(p) for p in glob.glob(os.path.join(d, "htp_quantsim_config_*.json"))])
+```
+
+Quantizing with the wrong architecture's config produces encodings whose
+constraints do not match the hardware you deploy to.
+
 ### Choosing the quant scheme
 
-| Scheme | Range from | When |
-|---|---|---|
-| `post_training_tf` | Absolute min/max seen | Clean, bounded activations |
-| `post_training_tf_enhanced` | Search minimising MSE | **Default.** Robust to outliers |
-| `post_training_percentile` | Clipped percentile | Heavy-tailed activations |
+Names differ by major version — check `QuantScheme` in your install.
 
-`tf_enhanced` is the right starting point. A single outlier activation drags a
-plain min/max range wide enough to waste most of the available levels.
+| Concept | AIMET 2.x | AIMET 1.x | When |
+|---|---|---|---|
+| Absolute min/max | `QuantScheme.min_max` | `post_training_tf` | Clean, bounded activations. **Shipped a production W8A16 ASR encoder** `[measured]` |
+| MSE-minimising search | *(see your release)* | `post_training_tf_enhanced` | Robust to outliers |
+| Percentile clipping | *(see your release)* | `post_training_percentile` | Heavy-tailed activations |
+
+An outlier-robust scheme is the safer general default `[convention]`, but
+`min_max` is not a fallback — it carried a 70M-parameter streaming encoder to
+15.88% WER on-device `[measured]`. Start with whichever, and let the **task
+metric** decide.
 
 ### W8A16 vs W8A8
 
-Start at W8A16 (`default_param_bw=8`, `default_activation_bw=16`). A16 is
-**INT16 fixed point, not FP16**. Drop to A8 only after W8A16 works and you have
-measured that you need the speed.
+Start at W8A16 — `param_type=qtype.int(8)`, `activation_type=qtype.int(16)` on
+2.x. A16 is **INT16 fixed point, not FP16**. Drop to A8 only after W8A16 works
+and you have measured that you need the speed.
 
 ## Stage 2 — calibration
 
 ```python
-def forward_pass(session, _):
-    for batch in calibration_batches:          # REAL data
-        session.run(None, batch)
-
-sim.compute_encodings(forward_pass, None)
+# AIMET 2.23: compute_encodings takes an ITERATOR OF INPUT DICTS,
+# not a forward-pass callback (that was the 1.x API).
+sim.compute_encodings(iter(calibration_inputs))   # [{"x": arr, ...}, ...]
 ```
+
+Each element is a dict mapping graph input name to a numpy array of the static
+shape — the same data you would feed ONNX Runtime.
+
+**Stateful / streaming models:** chain the states through the *float* model
+while building the calibration set, so each chunk sees realistic incoming state.
+Feeding zeroed state to every chunk calibrates the state tensors on a
+distribution that never occurs at run time.
 
 **Calibration data must come from the real input distribution.** This is the
 same rule as the classic flow and the same failure if broken: ranges that do
@@ -147,6 +181,12 @@ Corrects the systematic activation shift quantization introduces. Small but
 usually positive; needs a little data.
 
 ### 3. AdaRound — expensive, the big lever
+
+> **Unverified signature.** The quantsim and `compute_encodings` calls above are
+> AIMET 2.23 as-run `[measured]`. The AdaRound snippet below is the **1.x** API
+> and has not been re-verified on 2.x — the shipped production recipe this repo
+> draws on reached its accuracy target with quantsim alone and never needed
+> AdaRound. Check `help(Adaround.apply_adaround)` before running it.
 
 ```python
 from aimet_onnx.adaround.adaround_weight import Adaround, AdaroundParameters
@@ -221,6 +261,19 @@ print(f"FP32 {baseline:.4f} -> quantized {quantized:.4f}")
 accompanies a detector that has dropped an entire class or a vocoder with
 audible artefacts. Use mAP, WER, MOS, IoU — whatever the product is judged on.
 
+**Cosine can also be misleading in the other direction, which is less expected.**
+On one streaming ASR encoder, the quantized graph that **decoded correctly** sat
+at chunk-0 cosine **~0.59**, while a different quantization of the same model at
+cosine **0.60** produced **zero output tokens** `[measured]`. A higher cosine was
+the worse model.
+
+Two consequences:
+
+- **Never gate a release on cosine.** It cannot distinguish error that the rest
+  of the network absorbs from error that destroys the output.
+- A low cosine on a deep or recurrent model is **not by itself** a reason to
+  reject a quantization. Run the end-to-end task and look at the real metric.
+
 ### Per-layer sensitivity
 
 When accuracy is short, find out *where* before reaching for a bigger hammer.
@@ -232,8 +285,12 @@ exactly the situation mixed precision solves cheaply.
 ## Stage 5 — export
 
 ```python
-sim.export(path="./exported", filename_prefix="model")
+sim.export(path=OUTDIR, filename_prefix="model")   # -> model.encodings + model.onnx
 ```
+
+In AIMET 2.23 `activation_encodings` is a **list** of
+`{name, scale:[s], offset:[o], bw}` records `[measured]` — not the 1.x dict
+keyed by tensor name. Code that walks encodings must match the version.
 
 Produces:
 

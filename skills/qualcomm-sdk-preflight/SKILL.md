@@ -69,6 +69,23 @@ The converters pin a narrow Python range per QAIRT release, and it is often
 If `import qti.aisw` fails on a system Python, check the SDK's own bundled
 Python or its documented version before debugging the traceback.
 
+### numpy and onnx versions can break the converter
+
+**numpy 2.x breaks QAIRT 2.37's shape inference** `[measured]`. A working pin is
+**numpy 1.26.4 / onnx 1.12.0** in a dedicated converter virtualenv.
+
+This is worth isolating deliberately: AIMET wants a recent torch/numpy, the
+converter wants an old numpy, and one environment cannot satisfy both. Two
+virtualenvs on the same host is the normal arrangement —
+
+```sh
+source ~/venvs/aimet/bin/activate      # torch 2.5.x, aimet_onnx 2.x
+source ~/venvs/convenv/bin/activate    # numpy 1.26.4, onnx 1.12.0  <- converter
+```
+
+A converter failing deep inside shape inference, on a model that is fine, is the
+signature of this.
+
 ### ONNX opset
 
 Export models at **opset 17** for QAIRT 2.37.x `[measured]` — the pipeline in

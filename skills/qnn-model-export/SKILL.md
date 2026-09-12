@@ -1,6 +1,6 @@
 ---
 name: qnn-model-export
-description: Convert an ONNX model to a QNN model library for Qualcomm HTP using the classic flow - static-shape preparation, calibration input_list generation, qnn-onnx-converter with W8A16 quantization, then qnn-model-lib-generator to produce an aarch64 .so, validated with qnn-net-run. Use for QCS6490/Hexagon bring-up, whether a model will run on the NPU, or any qnn-onnx-converter, model-lib-generator, input_list or W8A16 question. For production context binaries use qnn-context-binary instead.
+description: Convert an ONNX model to a QNN model library for Qualcomm HTP using the classic flow - static-shape preparation, calibration input_list generation, qnn-onnx-converter with W8A16 quantization, then qnn-model-lib-generator to produce an aarch64 .so, validated with qnn-net-run. Accepts AIMET .encodings via --quantization_overrides alongside --input_list. Use for Qualcomm/Hexagon HTP model conversion, whether a model will run on the NPU, FP16 or float_fallback errors, or any qnn-onnx-converter, model-lib-generator, input_list, bias_bw or W8A16 question. The DLC alternative is qnn-context-binary.
 ---
 
 # QNN model export (classic flow)
@@ -8,10 +8,17 @@ description: Convert an ONNX model to a QNN model library for Qualcomm HTP using
 ONNX → `qnn-onnx-converter` → `qnn-model-lib-generator` → `libmodel.so` on the
 board.
 
-**Use this flow for bring-up**: proving a model converts, runs, and roughly how
-fast. For anything you ship, move to `qnn-context-binary` — a pre-compiled
-context binary loads faster and gives you AIMET-grade quantization control. See
-the repo README for the fork between the two.
+**This route ships production models.** It is not a bring-up-only path: it
+accepts AIMET `.encodings` via `--quantization_overrides` exactly as the DLC
+route does, and the `.so` it produces becomes a context binary compiled **on the
+board**.
+
+Its practical advantage is inspectability — the generated `.cpp` records the
+converter's full resolved argument namespace, which settles most "did my
+settings take effect?" questions in seconds.
+
+The alternative is `qnn-context-binary` (qairt-converter → DLC → host-side
+context binary). See the repo README for how the two differ.
 
 Verified against **QAIRT 2.37.x**, target **QCS6490 / HTP v68**. Confirm flags
 with `qnn-onnx-converter --help` before trusting anything below — flags move
@@ -120,15 +127,42 @@ qnn-onnx-converter \
 
 Produces `model.cpp`, `model.bin` and `model_net.json`.
 
-### Flag trap — read this
+### Bitwidth flags have two spellings, and both work
 
-The correct flags for `qnn-onnx-converter` are **`--act_bitwidth` and
-`--weights_bitwidth`** `[measured]`.
+`--act_bitwidth` / `--weights_bitwidth` and `--act_bw` / `--weight_bw` are
+**aliases**. Both are accepted by `qnn-onnx-converter` in QAIRT 2.37.1, and both
+appear in recipes that shipped `[measured]`. The converter's own resolved
+namespace carries both spellings side by side (`float_bitwidth=32; float_bw=32`).
 
-`--act_bw` / `--weight_bw` appear in older scripts circulating internally and
-in some vendor samples aimed at a *different* tool. They are not accepted here
-and produce an argparse error — or worse, get silently dropped by a wrapper,
-leaving you with an unquantized model you believe is W8A16.
+Also set **`--bias_bw`** (namespace: `bias_bitwidth`, default 8). One production
+W8A16 recipe uses `--act_bw 16 --weight_bw 8 --bias_bw 32` `[measured]` — bias
+at 32-bit costs almost nothing and removes a quantization error source that
+accumulates across a deep graph.
+
+### Verify what the converter actually received
+
+You do not have to trust that a flag was accepted. **The converter records its
+full resolved argument namespace in the generated `.cpp`, `.onnx` and
+`_net.json`** — every option, with the value it ended up with:
+
+```sh
+head -5 QNN_Models/model.cpp | tr ';' '\n' | grep -E 'bitwidth|_bw|quantization_overrides|float_fallback|input_list'
+```
+
+```text
+act_bitwidth=16
+weights_bitwidth=8
+bias_bitwidth=32
+float_fallback=False
+input_list=./qnn_calibration/model/input_list.txt
+quantization_overrides=/path/to/model.encodings
+```
+
+This is the authoritative answer to "did my quantization settings actually take
+effect?" — better than reading the command you typed, because it shows what the
+tool resolved. **Check it after every conversion.** A model you believe is
+W8A16 but which shows `act_bitwidth=8`, or an empty `quantization_overrides=`
+when you passed encodings, is caught here in seconds.
 
 ### Flags that matter
 
@@ -140,8 +174,34 @@ leaving you with an unquantized model you believe is W8A16.
 | `--param_quantizer tf` / `--act_quantizer tf` | TensorFlow-style symmetric. `tf_enhanced` trades outlier robustness |
 | `--use_per_channel_quantization` | Per-channel weights. Usually a clear accuracy win on conv |
 | `--float_bw 32` | Keep float-fallback ops at FP32, avoiding FP16 on unsupported ops |
-| `--float_fallback` | Allow ops with no quantized HTP implementation to run in float |
+| `--float_fallback` | Allow unquantized ops to run in float. **Dangerous on v68 — see below** |
+| `--quantization_overrides <file>` | **Apply AIMET `.encodings`.** Combine with `--input_list` |
+| `--bias_bw 32` | Bias bitwidth (namespace `bias_bitwidth`, default 8) |
 | `--dry_run` | **Parse and report without converting.** Use first, always |
+
+### Using AIMET encodings with this converter
+
+`qnn-onnx-converter` accepts `--quantization_overrides <model.encodings>`
+`[measured]`. AIMET is **not** limited to the QAIRT/DLC route — this is the
+classic flow consuming AIMET output directly.
+
+The proven pattern passes **both**, and they do different jobs:
+
+```sh
+qnn-onnx-converter     --input_network model_adapted.onnx     --quantization_overrides model_w8a16.encodings \   # AIMET's ranges
+    --input_list  real_vectors/input_list.txt \         # real activations
+    --act_bw 16 --weight_bw 8 --bias_bw 32     -d <input_name> <dims>
+```
+
+- `--quantization_overrides` supplies the per-tensor scale/offset AIMET
+  computed, including any AdaRound work.
+- `--input_list` still supplies real data for the tensors the encodings do not
+  cover.
+
+They are complementary, not alternatives. Confirm both landed by grepping the
+generated `.cpp` namespace (above) for a non-empty `quantization_overrides=`.
+
+`-d` is shorthand for `--input_dim`.
 
 ### Use `--dry_run` first, every time
 
@@ -162,6 +222,48 @@ modest speed cost and is the right default on HTP `[convention]`.
 
 Note A16 is **INT16 fixed point, not FP16**. Do not reach for `--float_bw 16`
 expecting the same thing.
+
+### `--float_fallback` can make the model unloadable — check your HTP first
+
+On **Hexagon v68 there is no FP16** `[vendor-claimed]`. An op left "float" by
+`--float_fallback` becomes an FP16 op the hardware cannot execute, and
+`qnn-context-binary-generator` then **aborts with exit 134** `[measured]`.
+
+So on v68 the working recipe is the opposite of the intuitive one: **convert
+all-quantized, with no `--float_fallback`**, and make the graph quantizable
+rather than letting ops escape into float.
+
+Audit the generated `.cpp` — this must be zero on v68:
+
+```sh
+grep -ci "FLOAT_16\|float16\|QNN_DATATYPE_FLOAT_16" QNN_Models/model.cpp
+```
+
+Newer HTP architectures do support FP16, which is why `--float_fallback` is
+sound advice elsewhere. **Check your target's architecture before taking either
+default** — `qualcomm-env-discovery` step 4.
+
+### When quantization keeps failing, suspect the graph
+
+If a model quantizes badly no matter what you try, the problem may be upstream
+of quantization. One documented case `[measured]`: four strategies on a stock
+ONNX export all failed — per-channel PTQ produced zero output tokens, AIMET
+overrides reached cosine 0.27, and `--float_fallback` crashed ctx-gen at exit
+134. What fixed it was **rewriting the graph into HTP-native ops before export**
+— folding training-time scale factors into weights, replacing ops the HTP
+handles poorly (Conv1d→Conv2d, Concat→Pad+Add), and precomputing constants.
+
+The generalizable points:
+
+- **Framework exports are tuned for training, not for an NPU.** Ops that are
+  free on a GPU (a scaling `Mul`, a wide `Concat`) can be the exact thing that
+  leaves FP16 behind or quantizes badly.
+- **A graph rewrite is verifiable.** If it is numerically equivalent, cosine
+  against the original should be ~1.000000. Gate on that before quantizing —
+  anything less means the rewrite changed behaviour.
+- **It often requires the original checkpoint**, not just the exported ONNX,
+  because the surgery happens in the framework. Budget for that: an ONNX-only
+  delivery can be a blocker.
 
 ## Stage 4 — model library
 

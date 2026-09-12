@@ -53,63 +53,84 @@ conflating them is a common source of "works on my machine".
 
 A single machine can hold more than one role. The skills never assume it does.
 
-## The fork — read this before choosing a skill
+## Two independent choices — read this before picking a skill
 
-QAIRT ships **two distinct flows**. They are not interchangeable, and the one
-you pick determines whether AIMET is even in the picture.
+A frequent misconception is that AIMET belongs to one conversion route. It does
+not. **These are two orthogonal decisions**, and you make both:
+
+### Choice 1 — where the quantization ranges come from
+
+| Source | How | When |
+|---|---|---|
+| Converter-internal | `--input_list` of real calibration vectors | Bring-up; simple models |
+| **AIMET** | `--quantization_overrides model.encodings` | Accuracy-critical; AdaRound; per-op control |
+| **Both together** | pass `--quantization_overrides` **and** `--input_list` | The proven production recipe `[measured]` |
+
+**Both converters accept `--quantization_overrides`** — `qnn-onnx-converter` as
+well as `qairt-converter`. AIMET is not tied to either route.
+
+Passing both is not redundant: the encodings supply the ranges AIMET computed,
+and `--input_list` supplies real data for whatever the encodings do not cover.
+
+### Choice 2 — which conversion route, and where the context binary is built
 
 ```text
-                        ONNX (static shapes)
-                                 |
-              +------------------+------------------+
-              |                                     |
-     CLASSIC / model-lib                    QAIRT / DLC
-              |                                     |
-   qnn-onnx-converter                     [ aimet-quantization ]
-   (quantizes inline from                  quantsim / AdaRound
-    a calibration --input_list)                     |
-              |                              *.encodings
-   model.cpp + model.bin                             |
-              |                          qairt-converter
-   qnn-model-lib-generator                --quantization_overrides
-   -t aarch64-oe-linux-gcc11.2                       |
-              |                                  model.dlc
-        libmodel.so                                  |
-              |                          qairt-quantizer --float_fallback
-              |                                       |
-              |                          model_quantized.dlc
-              |                                       |
-              |                       qnn-context-binary-generator
-              |                        --model libQnnModelDlc.so
-              |                        --backend libQnnHtp.so
-              |                                       |
-              |                               model_htp.bin
-              +------------------+------------------+
-                                 |
-                          runs on the board
+                    ONNX (static shapes, HTP-native ops)
+                                    |
+                    quantization source (choice 1)
+                    --input_list and/or --quantization_overrides
+                                    |
+              +---------------------+---------------------+
+              |                                           |
+      CLASSIC / model-lib                          QAIRT / DLC
+              |                                           |
+     qnn-onnx-converter                          qairt-converter
+              |                                           |
+     model.cpp + model.bin                          model.dlc
+              |                                           |
+     qnn-model-lib-generator                     qairt-quantizer
+     -t aarch64-oe-linux-gcc11.2                          |
+              |                                  model_quantized.dlc
+        libmodel.so                                       |
+              |                             qnn-context-binary-generator
+     copy .so to the board                     --dlc_path   (on the HOST)
+              |                                            |
+     qnn-context-binary-generator                          |
+       --model ./libmodel.so   (ON THE BOARD)              |
+              |                                            |
+              +---------------------+----------------------+
+                                    |
+                            model_htp.bin
 ```
 
-**AIMET feeds the right-hand path only.** `.encodings` is consumed by
-`qairt-converter --quantization_overrides`. There is no supported way to hand an
-AIMET `.encodings` file to `qnn-onnx-converter` — that converter derives its own
-quantization from the calibration `--input_list` you give it.
-
-So these are **alternative quantization sources converging on the board**, not
-sequential stages of one chain.
-
-### Which one should I use?
+Both routes end at a context binary. The real differences:
 
 | | Classic (`qnn-model-export`) | QAIRT/DLC (`qnn-context-binary`) |
 |---|---|---|
-| Quantization control | Converter-internal (`tf`, percentile) | Full — AIMET quantsim, AdaRound, per-op mixed precision |
-| Artifact on device | `libmodel.so` | `model_htp.bin` context binary |
-| Load time on device | Graph build at load | Pre-compiled — fastest cold start |
-| Iteration speed | Fast, one command | Slower, three stages |
-| Best for | Bring-up, "does it run at all", quick A/B | Production deployment, accuracy-critical models |
+| Intermediate | `.cpp` / `.bin` / `.so` | `.dlc` |
+| Context binary built | On the board, from the `.so` | On the host, from the DLC |
+| Needs cross-compile | **Yes** — `.so` must be built for the board | No |
+| Inspectability | High — the `.cpp` records the full resolved namespace | Lower |
+| Also runnable as | `qnn-net-run --model libmodel.so` | `qnn-net-run --retrieve_context *.bin` |
 
-**Recommendation:** use the classic flow to prove the model converts and runs,
-then move to the QAIRT/DLC path for anything you ship. A pre-compiled context
-binary is what you want resident on a thermally-constrained device.
+**Recommendation:** use whichever route your team already has working. If
+starting fresh, the classic route is easier to debug — the generated `.cpp`
+records exactly which options the converter resolved, which settles most
+"did my settings take effect?" questions in seconds.
+
+### A third choice you cannot skip: float fallback
+
+`--float_fallback` lets ops with no quantized implementation run in float. That
+is sound on architectures with FP16 — and **actively breaks Hexagon v68, which
+has none**: the op becomes FP16, the HTP cannot execute it, and context
+generation aborts with exit 134 `[measured]`.
+
+On v68 the working recipe is **all-quantized, no float fallback**, then audit
+the generated `.cpp` for zero FP16 tensors. Make the graph quantizable instead
+of letting ops escape into float — see the graph-adapt section in
+`qnn-model-export`.
+
+Check your target's architecture before taking either default.
 
 ## The skills
 

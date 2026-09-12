@@ -1,15 +1,19 @@
 ---
 name: qnn-context-binary
-description: Build a pre-compiled QNN HTP context binary for Qualcomm QCS6490 using the QAIRT/DLC flow - qairt-converter with AIMET quantization_overrides, qairt-quantizer, then qnn-context-binary-generator - and deploy and validate it on the board. Use for production deployment, fastest model load time, applying AIMET .encodings, or any qairt-converter, qairt-quantizer, DLC or context binary question. This is the production path; qnn-model-export is the bring-up path.
+description: Build a pre-compiled QNN HTP context binary for Qualcomm QCS6490 using the QAIRT/DLC flow - qairt-converter with AIMET quantization_overrides, qairt-quantizer, then qnn-context-binary-generator - and deploy and validate it on the board. Use for production deployment, fastest model load time, applying AIMET .encodings, or any qairt-converter, qairt-quantizer, DLC or context binary question. The classic alternative is qnn-model-export, which reaches a context binary via a cross-compiled .so built on the board instead.
 ---
 
 # QNN HTP context binary (QAIRT/DLC flow)
 
 ONNX + `.encodings` → DLC → quantized DLC → **pre-compiled HTP context binary**.
 
-This is the production path. The context binary is compiled for a specific HTP
-architecture ahead of time, so the board does not build the graph at load —
-which is what makes cold start fast and load cost predictable.
+The context binary is compiled for a specific HTP architecture ahead of time, so
+the board does not build the graph at load — which makes cold start fast and
+load cost predictable.
+
+Both this route and the classic one (`qnn-model-export`) can end at a context
+binary, and both accept AIMET encodings. What differs is the intermediate
+artifact and **where** the binary is compiled — see the repo README.
 
 Verified against **QAIRT 2.37.x**, target **QCS6490 / HTP v68**. Check
 `qairt-converter --help` before trusting a flag.
@@ -18,9 +22,9 @@ Verified against **QAIRT 2.37.x**, target **QCS6490 / HTP v68**. Check
 
 - `.qualcomm-env` from `qualcomm-env-discovery` (needs `QC_HTP_ARCH`)
 - A static-shape ONNX model
-- Optionally `model.encodings` from `aimet-quantization` — **strongly
-  recommended**, since quantization control is the main reason to be on this
-  path rather than the classic one
+- Optionally `model.encodings` from `aimet-quantization` — **recommended for
+  anything accuracy-critical**. (Available on the classic route too; it is not
+  what distinguishes these two paths.)
 
 ```sh
 WORK="$(pwd)"
@@ -49,7 +53,7 @@ model.onnx  +  model.encodings
         v
     model.dlc                        (graph, quantization params attached)
         |
-        |  qairt-quantizer --float_fallback
+        |  qairt-quantizer      (all-quantized; NO --float_fallback on v68)
         v
     model_quantized.dlc              (quantization applied)
         |
@@ -67,9 +71,13 @@ qairt-converter \
     --output_path            "$WORK/context_binaries/model.dlc"
 ```
 
-`--quantization_overrides` is the **only** supported route for AIMET encodings.
-Omit it and the quantizer picks its own ranges, discarding the AIMET work
-entirely — with no warning that it did.
+`--quantization_overrides` is how AIMET encodings reach the converter. Omit it
+and the quantizer picks its own ranges, discarding the AIMET work entirely —
+with no warning that it did.
+
+The classic route's `qnn-onnx-converter` takes the same flag, so being on this
+route is **not** what gives you AIMET. Pass `--input_list` here too when you
+have real calibration vectors; the two are complementary.
 
 Verify the overrides were actually read rather than assuming:
 
@@ -87,24 +95,33 @@ Re-export the pair from AIMET rather than patching either side.
 ```sh
 qairt-quantizer \
     --input_dlc  "$WORK/context_binaries/model.dlc" \
-    --output_dlc "$WORK/context_binaries/model_quantized.dlc" \
-    --float_fallback
+    --output_dlc "$WORK/context_binaries/model_quantized.dlc"
 ```
 
-`--float_fallback` lets ops with no quantized HTP implementation run in float
-rather than failing the whole conversion. It is a pragmatic default, but it
-hides a real cost: **every float-fallback op is a potential HTP→CPU round
-trip**, and a handful in the middle of a graph can dominate latency.
+**Note what is absent: `--float_fallback`.**
 
-Check what fell back before accepting the result:
+It lets ops with no quantized implementation run in float instead of failing the
+conversion, which sounds like a safe default and is not one:
+
+- **On Hexagon v68 it breaks the model.** v68 has no FP16 `[vendor-claimed]`, so
+  a float op becomes an FP16 op the HTP cannot execute, and
+  `qnn-context-binary-generator` **aborts with exit 134** `[measured]`.
+- **Even where FP16 exists**, every fallback op is a potential HTP-to-CPU round
+  trip; a handful mid-graph can dominate latency.
+
+So convert **all-quantized** and make the graph quantizable, rather than letting
+ops escape into float. If an op genuinely cannot be quantized, changing the
+model beats falling back — see the graph-adapt section in `qnn-model-export`.
+
+`scripts/build-context-binary.sh` omits the flag by default; set
+`FLOAT_FALLBACK=1` to opt in deliberately.
+
+Check what fell back before accepting any result:
 
 ```sh
 qairt-quantizer ... 2>&1 | tee quantize.log
 grep -iE 'fallback|float|unsupported' quantize.log
 ```
-
-If a hot inner block fell back, fix the model (replace the op) rather than
-shipping the fallback.
 
 ### Stage 3 — generate the context binary
 
@@ -126,7 +143,9 @@ Two things that confuse people here:
   model-lib flow `--model` *was* your compiled `.so` — same flag, different
   meaning between flows.
 - **`--binary_file` takes a base name, not a filename.** `model_htp` produces
-  `model_htp.bin`. Passing `model_htp.bin` gets you `model_htp.bin.bin`.
+  `model_htp.bin`. Passing `model_htp.bin` gets you `model_htp.bin.bin`
+  `[measured]` — real scripts in the wild work around this by deleting
+  `*.bin.bin` first rather than fixing the argument. Pass the base name.
 
 ### The context binary is architecture-locked
 
@@ -163,8 +182,52 @@ qnn-context-binary-generator --help
 
 or extract the flag list with `qualcomm-sdk-docs`. A backend-extensions key that
 your version does not recognise is typically **ignored without error** — you get
-a binary built for a default target, which is the same failure class as
-`--act_bw`.
+a binary built for a default target and no indication that your setting was
+dropped. Verify the result rather than trusting the invocation.
+
+## The other route: generate the context binary ON THE BOARD
+
+The DLC route above compiles the context binary on the host. There is a second
+route that compiles it **on the target**, from a cross-compiled `.so` produced
+by the classic flow (`qnn-model-export` → `qualcomm-cross-compile`):
+
+```sh
+# on the board
+export LD_LIBRARY_PATH=/usr/lib:$LD_LIBRARY_PATH
+
+qnn-context-binary-generator \
+    --model       ./libmodel_w8a16.so \
+    --backend     /usr/lib/libQnnHtp.so \
+    --binary_file model_w8a16_ctx \
+    --output_dir  .
+```
+
+Note `--model` here is **your** compiled `.so` — unlike the DLC route, where it
+is the SDK's `libQnnModelDlc.so` shim. Same flag, different meaning between
+routes; this trips people up.
+
+**Why build on the board:** the compiler sees the actual HTP it is targeting, so
+there is no architecture-mismatch class of failure. **Why not:** the board needs
+the SDK's context-binary generator staged on it, and boards are slow and
+thermally limited.
+
+### Acceptance gates for context generation
+
+Whichever route, the generation step has three pass conditions worth asserting
+rather than eyeballing `[measured]`:
+
+| Gate | Meaning if it fails |
+|---|---|
+| **RC = 0** | Generation failed. Exit **134** specifically means an op the HTP cannot run — on v68 almost always FP16 |
+| **No FP16 error** | Ops were left in float. On v68 the binary will not run |
+| **`spill_bytes = 0`** | The graph does not fit VTCM and is spilling to DDR. It will still run, much slower |
+
+```sh
+qnn-context-binary-generator ... 2>&1   | grep -iE 'error|fp16|spill|fail|saved' | tail -5
+```
+
+`spill_bytes = 0` is the one most often skipped, and it is the difference
+between a model that meets its latency budget and one that quietly does not.
 
 ## Deploy and validate
 

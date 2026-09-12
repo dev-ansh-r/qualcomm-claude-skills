@@ -10,6 +10,9 @@
 #   QNN_SDK_ROOT   required (or set in .qualcomm-env)
 #   QC_HTP_ARCH    target Hexagon arch, e.g. v68. Verified, not assumed.
 #   OUT_DIR        default ./context_binaries
+#   FLOAT_FALLBACK 1 to pass --float_fallback. OFF by default, deliberately:
+#                  on Hexagon v68 an op left "float" becomes FP16, which that
+#                  HTP cannot run - ctx-gen then aborts (exit 134). [measured]
 
 set -euo pipefail
 
@@ -108,9 +111,17 @@ FB=$(grep -ciE 'fallback|unsupported' "$QUANT_LOG" || true)
 if [ "$FB" -gt 0 ]; then
     echo >&2
     echo "NOTE: $FB float-fallback/unsupported mentions in the quantize log." >&2
-    echo "      Each fallback op is a potential HTP->CPU round trip. If one sits in" >&2
-    echo "      a hot inner block, fix the model rather than shipping the fallback:" >&2
+    echo "      On v68 a float op means FP16, which the HTP cannot execute. Fix the" >&2
+    echo "      MODEL (graph surgery before quantization) rather than accepting it:" >&2
     grep -iE 'fallback|unsupported' "$QUANT_LOG" | head -5 >&2
+fi
+
+# FP16 audit. On v68 this must be zero or the context binary will not load.
+FP16=$(grep -ciE 'float_?16|FLOAT_16' "$QUANT_LOG" 2>/dev/null || echo 0)
+echo "FP16 mentions in quantize log: $FP16"
+if [ "$FP16" -gt 0 ] && [ "${QC_HTP_ARCH:-}" = "v68" ]; then
+    echo "WARNING: FP16 referenced and target is v68, which has no FP16." >&2
+    echo "         Expect ctx-gen to abort. Convert all-quantized instead." >&2
 fi
 
 # ---------- stage 3 ----------

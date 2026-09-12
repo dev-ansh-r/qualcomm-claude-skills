@@ -1,0 +1,14 @@
+# These scripts run on Linux build hosts and on the target board.
+# A CRLF shebang becomes "/bin/bash^M: bad interpreter" there, so pin LF
+# regardless of the contributor's core.autocrlf setting.
+*.sh  text eol=lf
+*.py  text eol=lf
+*.md  text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+
+# Binary model artifacts, should they ever be force-added
+*.bin binary
+*.dlc binary
+*.so  binary
+*.raw binary

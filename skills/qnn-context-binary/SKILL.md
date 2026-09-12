@@ -144,8 +144,8 @@ Two things that confuse people here:
   meaning between flows.
 - **`--binary_file` takes a base name, not a filename.** `model_htp` produces
   `model_htp.bin`. Passing `model_htp.bin` gets you `model_htp.bin.bin`
-  `[measured]` — real scripts in the wild work around this by deleting
-  `*.bin.bin` first rather than fixing the argument. Pass the base name.
+  `[measured]`. Pass the base name — and if you inherit a script that deletes
+  `*.bin.bin` before each run, that is what it is working around.
 
 ### The context binary is architecture-locked
 
@@ -214,7 +214,7 @@ thermally limited.
 ### Acceptance gates for context generation
 
 Whichever route, the generation step has three pass conditions worth asserting
-rather than eyeballing `[measured]`:
+rather than eyeballing `[convention]`:
 
 | Gate | Meaning if it fails |
 |---|---|

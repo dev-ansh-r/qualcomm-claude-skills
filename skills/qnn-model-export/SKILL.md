@@ -129,7 +129,7 @@ Produces `model.cpp`, `model.bin` and `model_net.json`.
 
 **Check the output filename.** Depending on how `--output_path` is spelled, the
 converter may write the source file **without a `.cpp` extension**, which then
-breaks `qnn-model-lib-generator -c`. Production scripts defend against it:
+breaks `qnn-model-lib-generator -c`. Defend against it:
 
 ```sh
 CPP=${OUT}/model.cpp
@@ -145,22 +145,21 @@ will not build:
 grep -ci "FLOAT_16\|float16\|QNN_DATATYPE_FLOAT_16" QNN_Models/model.cpp
 ```
 
-Shipped pipelines run this as a **gate** on every convert, not as a diagnostic
-after something breaks `[measured]`.
+Run this as a **gate** on every convert, not as a diagnostic after something
+breaks.
 
 ### Bitwidth flags have two spellings, and both work
 
 `--act_bitwidth` / `--weights_bitwidth` and `--act_bw` / `--weight_bw` are
-**aliases**. One shipped pipeline uses **both spellings in adjacent scripts** —
-`--act_bw 16 --weight_bw 8 --bias_bw 32` to convert its encoder and
-`--act_bitwidth 16 --weights_bitwidth 8 --bias_bitwidth 32` for its decoder and
-joiner, same SDK build, both working `[measured]`. The converter's own resolved
-namespace carries alias pairs side by side (`float_bitwidth=32; float_bw=32`).
+**aliases**. Both spellings — `--act_bw 16 --weight_bw 8 --bias_bw 32` and
+`--act_bitwidth 16 --weights_bitwidth 8 --bias_bitwidth 32` — are accepted by
+the same SDK build and produce the same result `[measured]`. The converter's own
+resolved namespace carries alias pairs side by side
+(`float_bitwidth=32; float_bw=32`).
 
-Also set **`--bias_bw`** (namespace: `bias_bitwidth`, default 8). One production
-W8A16 recipe uses `--act_bw 16 --weight_bw 8 --bias_bw 32` `[measured]` — bias
-at 32-bit costs almost nothing and removes a quantization error source that
-accumulates across a deep graph.
+Also set **`--bias_bw`** (namespace: `bias_bitwidth`, default 8). For W8A16,
+`--bias_bw 32` `[measured]` costs almost nothing and removes a quantization
+error source that accumulates across a deep graph.
 
 ### Verify what the converter actually received
 
@@ -230,23 +229,23 @@ generated `.cpp` namespace (above) for a non-empty `quantization_overrides=`.
 
 ### You do not have to quantize every sub-model the same way
 
-In a multi-model pipeline, match the effort to each graph's sensitivity. One
-shipped configuration `[measured]`:
+In a multi-model pipeline, match the effort to each graph's sensitivity
+`[measured]`:
 
 | Sub-model | Strategy |
 |---|---|
-| Encoder (large, sensitive) | AIMET encodings + `--input_list` |
-| Decoder / joiner (small) | Plain PTQ — `--input_list` only, no AIMET |
+| Large, quantization-sensitive | AIMET encodings + `--input_list` |
+| Small downstream graphs | Plain PTQ — `--input_list` only, no AIMET |
 
 AIMET on the sensitive graph, converter-internal quantization on the small ones.
 Running AIMET over everything costs time without buying accuracy where the graph
 was never the problem.
 
-**But "small" does not mean "insensitive to calibration".** In that same
-pipeline the small joiner was the graph most sensitive to *calibration data
-quality* — synthetic vectors cost ~15 accuracy points, real trace vectors
-recovered all but ~1.3 `[measured]`. Skip AIMET on the small graphs if you like;
-do not skip real calibration data. See `references/calibration.md`.
+**But "small" does not mean "insensitive to calibration".** A small downstream
+graph can be the part most sensitive to *calibration data quality* — synthetic
+vectors costing ~15 accuracy points where real ones cost ~1.3 `[measured]`. Skip
+AIMET on the small graphs if you like; never skip real calibration data. See
+`references/calibration.md`.
 
 ### Use `--dry_run` first, every time
 
@@ -291,12 +290,18 @@ default** — `qualcomm-env-discovery` step 4.
 ### When quantization keeps failing, suspect the graph
 
 If a model quantizes badly no matter what you try, the problem may be upstream
-of quantization. One documented case `[measured]`: four strategies on a stock
-ONNX export all failed — per-channel PTQ produced zero output tokens, AIMET
-overrides reached cosine 0.27, and `--float_fallback` crashed ctx-gen at exit
-134. What fixed it was **rewriting the graph into HTP-native ops before export**
-— folding training-time scale factors into weights, replacing ops the HTP
-handles poorly (Conv1d→Conv2d, Concat→Pad+Add), and precomputing constants.
+of quantization. Every strategy applied to a bad graph can fail — per-channel
+PTQ, AIMET overrides, float fallback — while the graph itself is the cause
+`[measured]`. The fix is **rewriting it into HTP-native ops before export**:
+folding training-time scale factors into the weights, replacing ops the HTP
+handles poorly (Conv1d→Conv2d, Concat→Pad+Add), and precomputing constants that
+are recomputed at run time.
+
+How to recognise it: the failures look unrelated to each other. One strategy
+gives near-random output, another a poor cosine, another crashes context
+generation outright. That spread is the signal — a quantization problem usually
+degrades in one direction, whereas a bad graph fails differently under every
+approach.
 
 The generalizable points:
 

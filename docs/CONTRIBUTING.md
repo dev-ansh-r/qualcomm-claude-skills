@@ -8,7 +8,7 @@ The conventions below exist for that reason.
 
 | Tag | Means |
 |---|---|
-| `[measured]` | Someone on the team observed this on real hardware. Name the part and say what was measured |
+| `[measured]` | Observed on real Qualcomm hardware. Name the part, the SDK version, and what was measured |
 | `[vendor-claimed]` | From Qualcomm docs, a datasheet or an SOW. Plausible, unverified by us |
 | `[inferred]` | Reasoned from the above. May not hold |
 | `[convention]` | Engineering judgment or common practice, not a measurement. "~100 calibration samples", "prefer W8A16" |
@@ -51,12 +51,32 @@ Every flag in this repo should have been run, or read from `--help` on an
 installed SDK. Flags move between QAIRT majors, and plausible-looking wrong
 flags are worse than missing ones.
 
-Real example: `--act_bw` / `--weight_bw` circulate widely in internal scripts.
-`qnn-onnx-converter` accepts `--act_bitwidth` / `--weights_bitwidth`. A script
-using the former either errors, or silently produces an unquantized model that
-everyone believes is W8A16.
-
 When you cannot verify, say so in the text rather than omitting the caveat.
+
+### Two ways this toolchain lets you verify
+
+Use them before asserting anything about a flag:
+
+- **`qualcomm-sdk-docs`** extracts the accepted flag list from your installed
+  SDK's own `--help`.
+- **The converter records its full resolved argument namespace** into the
+  generated `.cpp` / `.onnx` / `_net.json`. That is what the tool actually
+  received, which is stronger evidence than the command you believe you typed.
+
+### A cautionary example, from this repo's own history
+
+An earlier revision asserted that `--act_bw` / `--weight_bw` were invalid and
+that only `--act_bitwidth` / `--weights_bitwidth` worked — and tagged it
+`[measured]`. **They are aliases; both work.** The claim came from noticing one
+spelling in a working recipe and inferring the other must be wrong.
+
+Two lessons worth keeping:
+
+- **Absence of evidence is not evidence of absence.** Not seeing a flag used is
+  not grounds for saying it fails.
+- **A wrong `[measured]` tag is the most expensive error you can make here**,
+  because the tag is what tells a reader they need not re-check. Tag `[inferred]`
+  when you reasoned it out, however confident you feel.
 
 ## 4. Scope claims to the version they were verified on
 

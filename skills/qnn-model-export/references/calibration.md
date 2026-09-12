@@ -60,7 +60,7 @@ assert arr.dtype == np.int64, arr.dtype    # cheap, catches a nasty bug
 
 ## Calibration quality outranks the quantization algorithm
 
-Measured on a small downstream sub-model (a joiner) in an ASR pipeline
+Measured on a small downstream sub-model in a multi-stage pipeline
 `[measured]`:
 
 | Calibration set | Accuracy gap vs float |
@@ -68,7 +68,7 @@ Measured on a small downstream sub-model (a joiner) in an ASR pipeline
 | ~10 synthetic/random vectors | **~15 points** |
 | ~60 real trace vectors, plus `--use_per_channel_quantization --act_quantizer_calibration mse` | **~1.3 points** |
 
-Same model, same bitwidths. **This was a larger lever than the encoder's
+Same model, same bitwidths. **This was a larger lever than the upstream model's
 quantization scheme** — an order of magnitude more than any algorithm choice.
 
 The reason is that the calibration set defines the range, and a range derived

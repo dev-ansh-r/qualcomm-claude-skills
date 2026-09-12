@@ -28,9 +28,9 @@ model.encodings  +  model.onnx
 `qnn-onnx-converter` as well as `qairt-converter` `[measured]` — AIMET is not
 tied to the DLC path.
 
-**Pass `--input_list` alongside it.** The proven production recipe supplies
-both: the encodings give the ranges AIMET computed, `--input_list` gives real
-data for what they do not cover. They are complementary, not alternatives.
+**Pass `--input_list` alongside it.** Supply both: the encodings give the ranges
+AIMET computed, `--input_list` gives real data for what they do not cover. They
+are complementary, not alternatives.
 
 **Run this on the AIMET host.** AIMET pins specific torch/onnx/onnxruntime
 versions that frequently conflict with the QAIRT SDK's Python environment, and
@@ -122,9 +122,9 @@ Names differ by major version — check `QuantScheme` in your install.
 | Percentile clipping | *(see your release)* | `post_training_percentile` | Heavy-tailed activations |
 
 An outlier-robust scheme is the safer general default `[convention]`, but
-`min_max` is not a fallback — it carried a 70M-parameter streaming encoder to
-15.88% WER on-device `[measured]`. Start with whichever, and let the **task
-metric** decide.
+`min_max` is not a fallback — it is sufficient for large models that meet their
+accuracy target `[measured]`. Start with either and let the **task metric**
+decide; do not assume the more elaborate scheme wins.
 
 ### W8A16 vs W8A8
 
@@ -184,9 +184,9 @@ usually positive; needs a little data.
 
 > **Unverified signature.** The quantsim and `compute_encodings` calls above are
 > AIMET 2.23 as-run `[measured]`. The AdaRound snippet below is the **1.x** API
-> and has not been re-verified on 2.x — the shipped production recipe this repo
-> draws on reached its accuracy target with quantsim alone and never needed
-> AdaRound. Check `help(Adaround.apply_adaround)` before running it.
+> and has not been re-verified on 2.x. Note that quantsim with good calibration
+> is often enough to hit an accuracy target without AdaRound at all — try that
+> first. Check `help(Adaround.apply_adaround)` before running this.
 
 ```python
 from aimet_onnx.adaround.adaround_weight import Adaround, AdaroundParameters
@@ -262,9 +262,9 @@ accompanies a detector that has dropped an entire class or a vocoder with
 audible artefacts. Use mAP, WER, MOS, IoU — whatever the product is judged on.
 
 **Cosine can also be misleading in the other direction, which is less expected.**
-On one streaming ASR encoder, the quantized graph that **decoded correctly** sat
-at chunk-0 cosine **~0.59**, while a different quantization of the same model at
-cosine **0.60** produced **zero output tokens** `[measured]`. A higher cosine was
+On one sequence model, the quantization that **produced correct output** sat at
+cosine **~0.59**, while a different quantization of the same model at cosine
+**0.60** produced **no usable output at all** `[measured]`. The higher cosine was
 the worse model.
 
 Two consequences:
@@ -334,16 +334,15 @@ enc = json.load(open("exported/model.encodings"))
 print(len(enc["activation_encodings"]), "act /", len(enc["param_encodings"]), "param")
 ```
 
-A shipped pipeline gates on an exact pair (e.g. `1501 act / 265 param`)
-`[measured]`. If the count moves, something changed — the graph, the config, or
-the AIMET version — and you want to know before converting, not after a WER
-regression.
+Gate on the exact pair `[convention]`. If the count moves, something changed —
+the graph, the config, or the AIMET version — and you want to know before
+converting, not after an accuracy regression you then have to bisect.
 
-**2. Freeze the environment, and reuse it.** One team deliberately **reuses the
-same AIMET virtualenv across model builds** rather than recreating it, so
-results stay bit-identical `[measured]`. Recreating from the same
-`requirements.txt` months later resolves different transitive dependencies and
-can move your encodings.
+**2. Freeze the environment, and reuse it.** Keep one AIMET virtualenv and reuse
+it across builds rather than recreating it, so results stay comparable
+`[convention]`. Rebuilding from the same `requirements.txt` months later
+resolves different transitive dependencies, and that can move your
+encodings.
 
 If you must rebuild it, treat the first run as a **re-validation**: compare
 encoding counts and the task metric against the last known-good build.
@@ -351,15 +350,16 @@ encoding counts and the task metric against the last known-good build.
 ## When the output is garbage, suspect the layers around quantization
 
 A quantized model producing nonsense is not always a quantization problem. Two
-documented cases from the same pipeline `[measured]`:
+causes that present identically `[measured]`:
 
-- **The post-processing layer.** A decoder skipped two special token ids but the
-  new model emitted a third on uncertain frames, so that token flooded the
-  output and the real prediction never won. Nothing was wrong with the
-  quantization. Suppressing the offending *logit* did not help either — the
-  next-highest token simply won instead; the fix was in the decode loop.
-- **The graph.** Four quantization strategies failed on a stock export until the
-  graph was rewritten into HTP-native ops before quantization.
+- **The post-processing layer.** Decode logic carried over from a previous model
+  can mishandle an output the new model produces — a special token the old one
+  never emitted, say — so that output floods the result and the real prediction
+  never wins. Nothing is wrong with the quantization. Suppressing the offending
+  *logit* does not help either: the next-highest candidate simply wins instead.
+  The fix belongs in the decode loop.
+- **The graph.** Several quantization strategies can all fail on a framework
+  export until the graph is rewritten into HTP-native ops beforehand.
 
 Before spending days on quantization tuning, check that the **float** model,
 run through the **same** post-processing, still behaves. That one comparison

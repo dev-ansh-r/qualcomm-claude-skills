@@ -64,7 +64,7 @@ not. **These are two orthogonal decisions**, and you make both:
 |---|---|---|
 | Converter-internal | `--input_list` of real calibration vectors | Bring-up; simple models |
 | **AIMET** | `--quantization_overrides model.encodings` | Accuracy-critical; AdaRound; per-op control |
-| **Both together** | pass `--quantization_overrides` **and** `--input_list` | The proven production recipe `[measured]` |
+| **Both together** | pass `--quantization_overrides` **and** `--input_list` | Recommended for accuracy-critical models `[measured]` |
 
 **Both converters accept `--quantization_overrides`** — `qnn-onnx-converter` as
 well as `qairt-converter`. AIMET is not tied to either route.
@@ -113,10 +113,10 @@ Both routes end at a context binary. The real differences:
 | Inspectability | High — the `.cpp` records the full resolved namespace | Lower |
 | Also runnable as | `qnn-net-run --model libmodel.so` | `qnn-net-run --retrieve_context *.bin` |
 
-**Recommendation:** use whichever route your team already has working. If
-starting fresh, the classic route is easier to debug — the generated `.cpp`
-records exactly which options the converter resolved, which settles most
-"did my settings take effect?" questions in seconds.
+**Recommendation:** use whichever route you already have working. If starting
+fresh, the classic route is easier to debug — the generated `.cpp` records
+exactly which options the converter resolved, which settles most "did my
+settings take effect?" questions in seconds.
 
 ### A third choice you cannot skip: float fallback
 
@@ -149,8 +149,8 @@ Check your target's architecture before taking either default.
 **Provenance tags.** Every number in these skills carries its evidence class.
 Do not promote one to another without a measurement.
 
-- `[measured]` — observed on real hardware by someone on the team; the part is
-  named where it matters
+- `[measured]` — observed on real Qualcomm hardware; the part and SDK version
+  are named wherever they affect the claim
 - `[vendor-claimed]` — from Qualcomm docs, an SOW, or a datasheet; unverified
 - `[inferred]` — reasoned from the above; may not hold
 - `[convention]` — engineering judgment or common practice, not a measurement
@@ -163,9 +163,8 @@ fix what you find — see `docs/CONTRIBUTING.md`.
 
 **Version scope.** The *flow* is part-agnostic. The *examples* were verified
 against **QAIRT 2.37.x** on a **QCS6490 (Hexagon HTP v68)** with eSDK toolchain
-`aarch64-oe-linux-gcc11.2`, because that is the setup this repo has evidence
-from. Where a concrete value appears, it is an example — the skill tells you how
-to determine yours.
+`aarch64-oe-linux-gcc11.2`. Where a concrete value appears it is an example, and
+the skill tells you how to determine yours.
 
 Two things that do **not** transfer between parts, and that the skills therefore
 never assume:

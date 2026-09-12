@@ -8,7 +8,7 @@ description: Verify a QAIRT/QNN SDK install is complete and usable before conver
 Confirms the SDK on this machine can actually convert a model, and points at
 docs for **the version installed** rather than the newest published.
 
-Assumes `qcs6490-env-discovery` has run and `.qualcomm-env` exists. If not, run
+Assumes `qualcomm-env-discovery` has run and `.qualcomm-env` exists. If not, run
 that first — this skill needs `QC_QNN_SDK_ROOT`.
 
 ## Part 1 — dependency check
@@ -46,14 +46,19 @@ ls -d "$QNN_SDK_ROOT"/lib/hexagon-v*/ 2>/dev/null
 ```
 
 The `v68` / `v73` / `v75` in those directory names is the **Hexagon HTP
-architecture version**, and it must include the one your part uses.
+architecture version**. This tells you what the SDK can *build for*; which one
+your part *needs* is a separate question — determine it with
+`qualcomm-env-discovery` (SoC id) and `qualcomm-sdk-docs` (the mapping, from
+your SDK's own documentation).
 
-QCS6490 is **HTP v68** `[vendor-claimed]`.
+**Do not infer the architecture from the part number.** Hexagon versions do not
+track SoC model numbers in any extrapolable pattern.
 
-If v68 is absent, a context binary still builds on the host and then **fails to
-load on the board** with a backend error that reads like a corrupt file. This
-costs hours if you do not check it up front. Fix by installing the matching
-Hexagon SDK / HTP support package, not by rebuilding the model.
+If your target architecture is absent, a context binary still builds on the host
+and then **fails to load on the board**, with a backend error that reads like a
+corrupt file. This costs hours if you do not check it up front. Fix by
+installing the matching Hexagon / HTP support package, not by rebuilding the
+model.
 
 ### Python version compatibility
 
@@ -73,6 +78,11 @@ this repo's reference material was set explicitly with
 ## Part 2 — finding the right documentation
 
 **Order matters. The SDK-local docs match your install; the website does not.**
+
+> For anything beyond a quick look, use the **`qualcomm-sdk-docs`** skill — it
+> extracts tool flags, operator tables and architecture identifiers out of your
+> installed SDK into a greppable local cache, and checks a model's operators
+> against it. The rest of this section is the manual equivalent.
 
 ### 1. SDK-local docs — always first
 

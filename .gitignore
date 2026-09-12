@@ -1,4 +1,4 @@
-# Machine-specific config written by qcs6490-env-discovery.
+# Machine-specific config written by qualcomm-env-discovery.
 # Names internal hosts - never commit.
 .qualcomm-env
 
@@ -19,3 +19,6 @@ qnn_calibration/
 
 __pycache__/
 *.pyc
+
+# Extracted SDK documentation cache - derived, large, install-specific.
+.qualcomm-docs/

@@ -36,7 +36,7 @@ for cfg in "$WORK/.qualcomm-env" "$HOME/.qualcomm-env"; do
     [ -r "$cfg" ] && { . "$cfg"; echo "config: $cfg"; break; }
 done
 QNN_SDK_ROOT="${QNN_SDK_ROOT:-${QC_QNN_SDK_ROOT:-}}"
-[ -n "$QNN_SDK_ROOT" ] || die "QNN_SDK_ROOT unset. Run qcs6490-env-discovery."
+[ -n "$QNN_SDK_ROOT" ] || die "QNN_SDK_ROOT unset. Run qualcomm-env-discovery."
 
 # ---------- environment, in the load-bearing order ----------
 step "Environment"

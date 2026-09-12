@@ -1,5 +1,5 @@
 ---
-name: qcs6490-cross-compile
+name: qualcomm-cross-compile
 description: Cross-compile a C/C++ or ROS2 application for a Qualcomm QCS6490 aarch64 board using the Yocto/QIRP eSDK - environment setup order, CMake and colcon invocation, linking the QNN runtime, and the silent-failure modes that exit 0 while producing nothing. Use when the target board has an immutable or OSTree image with no on-device compiler, when a build succeeds but produces no binary, or for toolchain, sysroot, eSDK or aarch64 linking questions.
 ---
 
@@ -37,7 +37,7 @@ cd "$WORK"                                          # sourcing may have moved yo
 ```
 
 Each step is there because of a specific silent failure. Full rationale:
-`qcs6490-env-discovery/references/environment-setup.md`.
+`qualcomm-env-discovery/references/environment-setup.md`.
 
 Verify before building:
 

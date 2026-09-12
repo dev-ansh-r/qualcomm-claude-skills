@@ -48,13 +48,24 @@ if [ -n "$SDK" ] && [ -d "$SDK" ]; then
     emit QC_QAIRT_VERSION "$VER"
 
     # HTP architecture support - the load-bearing one
+    # What the SDK can BUILD for. Which of these your part NEEDS is a separate
+    # question, answered by the board's SoC id + the SDK-local docs.
     HTP=$(ls -d "$SDK"/lib/hexagon-v*/ 2>/dev/null | xargs -n1 basename 2>/dev/null | tr '\n' ',' | sed 's/,$//')
     emit QC_HTP_ARCH_AVAILABLE "${HTP:-none}"
-    case "$HTP" in
-        *v68*) say "hexagon-v68 present (QCS6490 target OK)" ;;
-        "")    say "WARNING: no hexagon-v* libs found - HTP backend will not build" ;;
-        *)     say "WARNING: no v68 - found [$HTP]. A QCS6490 context binary will fail to LOAD on the board." ;;
-    esac
+    if [ -z "$HTP" ]; then
+        say "WARNING: no hexagon-v* libs found - HTP backend will not build"
+    else
+        say "SDK can build for: $HTP"
+        # If the caller already knows the target arch, verify it is buildable.
+        if [ -n "${QC_HTP_ARCH:-}" ]; then
+            case ",$HTP," in
+                *",hexagon-$QC_HTP_ARCH,"*) say "target $QC_HTP_ARCH: present" ;;
+                *) say "WARNING: target arch '$QC_HTP_ARCH' NOT in this SDK. A context binary would build and then fail to LOAD." ;;
+            esac
+        else
+            say "QC_HTP_ARCH unset - determine your part's arch from its SoC id and the SDK docs, then set it"
+        fi
+    fi
 
     # which converter generation is installed
     B="$SDK/bin/x86_64-linux-clang"
@@ -87,6 +98,24 @@ if [ -n "$ESDK" ]; then
 else
     emit QC_ESDK_ENV ""
     say "No eSDK environment-setup found (needed for model-lib-generator and app cross-compile)"
+fi
+
+# ---------- SoC identity (board) ----------
+# Which Qualcomm part this is. Read from the kernel, never inferred from a
+# hostname or assumed from the project. The SoC id -> HTP arch mapping lives in
+# the SDK-local docs; extract it with the qualcomm-sdk-docs skill.
+if [ "$ARCH" = "aarch64" ]; then
+    for f in /sys/devices/soc0/machine /sys/devices/soc0/family \
+             /sys/devices/soc0/soc_id /sys/devices/soc0/revision; do
+        [ -r "$f" ] && emit "QC_SOC_$(basename "$f" | tr '[:lower:]' '[:upper:]')" "$(cat "$f" 2>/dev/null)"
+    done
+    # qnn-platform-validator, when the SDK runtime is staged on the board,
+    # reports what the backend itself claims. Flag names vary by release -
+    # check --help before relying on the output.
+    if command -v qnn-platform-validator >/dev/null 2>&1; then
+        emit QC_HAS_PLATFORM_VALIDATOR true
+        say "qnn-platform-validator present - run it to have the backend report its own capability"
+    fi
 fi
 
 # ---------- on-device QNN runtime ----------

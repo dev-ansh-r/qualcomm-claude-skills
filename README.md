@@ -1,8 +1,14 @@
-# Claude Skills for Qualcomm QCS6490 / QAIRT
+# Claude Skills for Qualcomm QAIRT / Hexagon HTP
 
 A set of Claude Code skills for developers taking a model from ONNX to running
-on a Qualcomm QCS6490 (Hexagon HTP), and for cross-compiling the application
-that loads it.
+on Qualcomm silicon (Hexagon HTP / NPU), and for cross-compiling the
+application that loads it.
+
+**Part-agnostic.** The workflow is the same across QCS, QCM, SA, SM, QRB and
+Snapdragon parts — what changes is the Hexagon architecture version, the
+operator support that follows from it, and the eSDK toolchain. The skills
+*determine* those for your target rather than assuming them. Nothing is
+hardcoded to one part.
 
 These skills encode the parts of the workflow that are **not** in the Qualcomm
 docs: which of the two toolchain flows to use, the flags that actually work,
@@ -27,7 +33,7 @@ the ones you need.
 
 ## First run
 
-Start with `qcs6490-env-discovery`. It writes a `.qualcomm-env` config that
+Start with `qualcomm-env-discovery`. It writes a `.qualcomm-env` config that
 every other skill reads, so you name your machines once.
 
 **No skill in this repo contains a hardcoded IP, hostname, or SDK path.**
@@ -43,7 +49,7 @@ conflating them is a common source of "works on my machine".
 |---|---|---|
 | **AIMET host** | `aimet-onnx` / `aimet-torch` quantsim, AdaRound | Heavy deps, often GPU, pinned torch/onnx versions that fight the SDK's |
 | **Build host** | QAIRT SDK (`x86_64-linux-clang`), Yocto/QIRP eSDK | x86_64 only — the converters have no aarch64 build |
-| **Target board** | QCS6490, Hexagon HTP | Typically an immutable OSTree image: no gcc/cmake/git on-device |
+| **Target board** | Qualcomm SoC, Hexagon HTP | Typically an immutable OSTree image: no gcc/cmake/git on-device |
 
 A single machine can hold more than one role. The skills never assume it does.
 
@@ -109,11 +115,12 @@ binary is what you want resident on a thermally-constrained device.
 
 | Skill | Does | Host |
 |---|---|---|
-| `qcs6490-env-discovery` | Find board + servers, verify versions, write `.qualcomm-env` | local |
-| `qualcomm-sdk-preflight` | Check SDK deps are complete; locate docs for *your* version | build host |
+| `qualcomm-env-discovery` | Find board + servers, verify versions and SoC/HTP arch, write `.qualcomm-env` | local |
+| `qualcomm-sdk-preflight` | Check SDK deps are complete and usable | build host |
+| `qualcomm-sdk-docs` | Extract flags, op tables and arch mappings from *your* SDK; check a model's ops | build host |
 | `qnn-model-export` | Classic flow: static shapes → converter → model-lib-generator | build host |
 | `aimet-quantization` | quantsim, AdaRound, PTQ, mixed precision → `.encodings` | AIMET host |
-| `qcs6490-cross-compile` | Cross-compile the application against the eSDK | build host |
+| `qualcomm-cross-compile` | Cross-compile the application against the eSDK | build host |
 | `qnn-context-binary` | qairt-converter → quantizer → context binary → deploy | build host + board |
 
 ## Conventions used throughout
@@ -121,7 +128,8 @@ binary is what you want resident on a thermally-constrained device.
 **Provenance tags.** Every number in these skills carries its evidence class.
 Do not promote one to another without a measurement.
 
-- `[measured]` — observed on a QCS6490 by someone on the team
+- `[measured]` — observed on real hardware by someone on the team; the part is
+  named where it matters
 - `[vendor-claimed]` — from Qualcomm docs, an SOW, or a datasheet; unverified
 - `[inferred]` — reasoned from the above; may not hold
 - `[convention]` — engineering judgment or common practice, not a measurement
@@ -132,11 +140,20 @@ scripts; the shell and Python here pass syntax checks, which is not the same as
 being run. Treat the first execution on your setup as a verification pass, and
 fix what you find — see `docs/CONTRIBUTING.md`.
 
-**Version scope.** Verified against **QAIRT 2.37.x**, target **QCS6490 /
-Hexagon HTP v68**, eSDK toolchain `aarch64-oe-linux-gcc11.2`. Flags and tool
-names move between QAIRT majors. Every skill re-checks the installed version
-before it trusts its own examples — `qcs6490-env-discovery` is what does that.
+**Version scope.** The *flow* is part-agnostic. The *examples* were verified
+against **QAIRT 2.37.x** on a **QCS6490 (Hexagon HTP v68)** with eSDK toolchain
+`aarch64-oe-linux-gcc11.2`, because that is the setup this repo has evidence
+from. Where a concrete value appears, it is an example — the skill tells you how
+to determine yours.
 
-Newer parts (QCS8550, SA8295, Snapdragon X) use the same tools but different
-HTP architecture versions and op support. The *flow* transfers; the *numbers* do
-not.
+Two things that do **not** transfer between parts, and that the skills therefore
+never assume:
+
+- **Hexagon architecture version.** It does not track SoC model numbers in any
+  extrapolable pattern. Determine it from the board's SoC id and your SDK-local
+  docs (`qualcomm-sdk-docs`); a wrong guess builds cleanly and fails at load.
+- **Operator support.** It is per HTP architecture. Extract the table for your
+  target rather than reusing one from another part.
+
+Flags and tool names also move between QAIRT majors, so every skill re-checks
+the installed version before trusting its own examples.

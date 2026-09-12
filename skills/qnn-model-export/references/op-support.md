@@ -1,11 +1,19 @@
 # What converts cleanly on HTP, and what does not
 
-Scope: **QCS6490 / Hexagon HTP v68**, QAIRT 2.37.x. Op support is *per HTP
-architecture version* — a model that converts for v73 may not for v68.
+Op support is **per Hexagon architecture version** — a model that converts for
+v73 may not for v68, and vice versa. Nothing in this file is a substitute for
+the table that matches your target.
 
 **The authoritative source is the op-support page in your SDK-local docs**
-(`$QNN_SDK_ROOT/docs/`), not this file. This file records the patterns that
-cost teams time.
+(`$QNN_SDK_ROOT/docs/`). Extract it for your architecture with the
+**`qualcomm-sdk-docs`** skill, then check a model against it:
+
+```sh
+python3 check-model-ops.py model.onnx --backend htp
+```
+
+This file records the patterns that cost teams time, across parts. Examples
+were seen on **QCS6490 / HTP v68, QAIRT 2.37.x**.
 
 ## The check that answers it in seconds
 

@@ -16,7 +16,7 @@ Verified against **QAIRT 2.37.x**, target **QCS6490 / HTP v68**. Check
 
 ## Prerequisites
 
-- `.qualcomm-env` from `qcs6490-env-discovery` (needs `QC_HTP_ARCH`)
+- `.qualcomm-env` from `qualcomm-env-discovery` (needs `QC_HTP_ARCH`)
 - A static-shape ONNX model
 - Optionally `model.encodings` from `aimet-quantization` — **strongly
   recommended**, since quantization control is the main reason to be on this
@@ -140,9 +140,31 @@ Confirm before building:
 ls -d "$QNN_SDK_ROOT"/lib/hexagon-v*/
 ```
 
-QCS6490 is **HTP v68** `[vendor-claimed]`. Encode the arch in the filename
-(`model_w8a16_v68.bin`) — it is the single fact most likely to be lost when a
-binary is copied between machines.
+Determine your part's architecture rather than assuming it — see
+`qualcomm-env-discovery` step 4. For reference, QCS6490 is **HTP v68**
+`[vendor-claimed]`; other parts differ, and the version does not track the part
+number in any extrapolable pattern.
+
+**Encode the arch in the filename** (`model_w8a16_v68.bin`). It is the single
+fact most likely to be lost when a binary is copied between machines, and its
+absence is unrecoverable from the binary itself.
+
+### Targeting a specific part
+
+Beyond the architecture, some releases let you name the target SoC so the
+compiler can apply part-specific settings — via `--soc_model`-style arguments
+or the backend-extensions config referenced by `--config_file`. **The exact key
+names vary by QAIRT version**, so read them from your install rather than
+copying an example:
+
+```sh
+qnn-context-binary-generator --help
+```
+
+or extract the flag list with `qualcomm-sdk-docs`. A backend-extensions key that
+your version does not recognise is typically **ignored without error** — you get
+a binary built for a default target, which is the same failure class as
+`--act_bw`.
 
 ## Deploy and validate
 

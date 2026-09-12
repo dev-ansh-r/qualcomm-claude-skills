@@ -8,7 +8,7 @@ The conventions below exist for that reason.
 
 | Tag | Means |
 |---|---|
-| `[measured]` | Someone on the team observed this on a QCS6490. Say what was measured if it is not obvious |
+| `[measured]` | Someone on the team observed this on real hardware. Name the part and say what was measured |
 | `[vendor-claimed]` | From Qualcomm docs, a datasheet or an SOW. Plausible, unverified by us |
 | `[inferred]` | Reasoned from the above. May not hold |
 | `[convention]` | Engineering judgment or common practice, not a measurement. "~100 calibration samples", "prefer W8A16" |
@@ -35,7 +35,7 @@ measure it rather than asserting a value.
 These skills ship to other developers. **No IPs, hostnames, usernames, absolute
 paths into someone's home directory, model names, or project names.**
 
-Endpoints come from `.qualcomm-env`, written by `qcs6490-env-discovery`. Paths
+Endpoints come from `.qualcomm-env`, written by `qualcomm-env-discovery`. Paths
 come from `$QNN_SDK_ROOT` and friends.
 
 Where an example needs a concrete value, make it obviously a placeholder
@@ -60,7 +60,8 @@ When you cannot verify, say so in the text rather than omitting the caveat.
 
 ## 4. Scope claims to the version they were verified on
 
-The repo targets **QAIRT 2.37.x / QCS6490 / HTP v68**. When you add something
+The repo is part-agnostic; its examples were verified on **QAIRT 2.37.x / QCS6490
+/ HTP v68**. When you add something
 verified elsewhere, name the version inline. The *flow* generally transfers
 across parts; the *numbers and op support* do not.
 

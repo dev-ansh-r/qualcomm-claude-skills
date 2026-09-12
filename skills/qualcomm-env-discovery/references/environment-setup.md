@@ -1,6 +1,6 @@
 # Environment setup order (build host)
 
-Shared by `qnn-model-export`, `qcs6490-cross-compile` and `qnn-context-binary`.
+Shared by `qnn-model-export`, `qualcomm-cross-compile` and `qnn-context-binary`.
 Getting this wrong is the leading cause of commands that **exit 0 and produce
 nothing**.
 

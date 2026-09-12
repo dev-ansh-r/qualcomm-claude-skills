@@ -27,7 +27,7 @@ cd "$WORK"
 ```
 
 Use `bash`, never `sh`. In Jupyter that means `%%bash`. Full rationale in
-`qcs6490-env-discovery/references/environment-setup.md`.
+`qualcomm-env-discovery/references/environment-setup.md`.
 
 ## Stage 1 — static shapes
 

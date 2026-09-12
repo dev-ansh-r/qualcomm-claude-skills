@@ -1,0 +1,21 @@
+# Machine-specific config written by qcs6490-env-discovery.
+# Names internal hosts - never commit.
+.qualcomm-env
+
+# Build artifacts
+*.dlc
+*.bin
+*.so
+*.raw
+*.encodings
+context_binaries/
+QNN_Models/
+QNN_Model_lib/
+qnn_calibration/
+
+# Logs
+*.log
+.logs/
+
+__pycache__/
+*.pyc

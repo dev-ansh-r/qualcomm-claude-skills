@@ -153,6 +153,34 @@ Check your target's architecture before taking either default.
 | `qualcomm-cross-compile` | Cross-compile the application against the eSDK | build host |
 | `qnn-context-binary` | qairt-converter → quantizer → context binary → deploy | build host + board |
 
+## Tests
+
+```sh
+bash tests/run-tests.sh            # everything
+bash tests/run-tests.sh --quick    # structure and lint only
+```
+
+Needs `bash` and a working `python3`. `onnx` is optional — the model-operator
+tests skip cleanly without it. Nothing is written outside a scratch directory,
+and no test contacts a network or a board.
+
+What it enforces, beyond the obvious syntax checks:
+
+| Check | Why |
+|---|---|
+| Frontmatter `name` matches the directory | A mismatch makes the skill unloadable |
+| Every non-setup skill carries the first-run gate | And that the gate keys on `QC_SETUP_VERSION`, **not** file existence |
+| `scripts/` and `references/` paths resolve | A dangling reference is a dead end mid-task |
+| Only the four sanctioned provenance tags appear | The tags are the repo's credibility; an invented one erodes it |
+| **Leak scan** over tracked content *and commit messages* | Patterns live in `tests/leak-patterns.txt` — extend it |
+| Shell blocks have no dangling line continuations | A scripted edit once ate them, leaving commands that could not run |
+| Scripts are `100755` in the git index | The skills tell people to run them directly |
+| `write-env.sh` refuses credentials and malformed values | Including that it **accepts an empty `QC_HTP_ARCH`**, which is correct when no board was reachable |
+| `probe-env.sh` performs no writes | It runs on boards where a stray write can trigger a watchdog reset |
+
+Run it before sending a pull request. The leak scan in particular is what keeps
+internal hostnames out of a public repo.
+
 ## Conventions used throughout
 
 **Provenance tags.** Every number in these skills carries its evidence class.

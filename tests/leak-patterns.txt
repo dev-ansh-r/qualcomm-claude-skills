@@ -1,0 +1,25 @@
+# Patterns that must never appear in tracked content or commit messages.
+# One extended-regex per line. Lines starting with # are ignored.
+# This file is excluded from the scan it drives.
+192\.168
+10\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]
+172\.1[6-9]\.
+chunk@
+asrock
+/home/chunk
+nunnari
+advantech
+hearsight
+supertonic
+okvis
+zipformer
+svarah
+kathbath
+attrix
+icefall
+raemox
+devansh
+zephyrus
+clamod
+\.pem\b
+BEGIN [A-Z ]*PRIVATE KEY

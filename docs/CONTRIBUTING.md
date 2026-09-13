@@ -35,7 +35,7 @@ measure it rather than asserting a value.
 These skills ship to other developers. **No IPs, hostnames, usernames, absolute
 paths into someone's home directory, model names, or project names.**
 
-Endpoints come from `.qualcomm-env`, written by `qualcomm-env-discovery`. Paths
+Endpoints come from `.qualcomm-env`, written by `qualcomm-setup`. Paths
 come from `$QNN_SDK_ROOT` and friends.
 
 Where an example needs a concrete value, make it obviously a placeholder
@@ -120,6 +120,17 @@ not a topic label. Include the tool names and error phrases people actually
 type. Aim for 300–500 characters.
 
 ## Before you commit
+
+```sh
+bash tests/run-tests.sh
+```
+
+It enforces most of the list below mechanically, including the leak scan over
+both tracked content and commit messages. Add a pattern to
+`tests/leak-patterns.txt` when you notice a new class of thing that must never
+be published.
+
+
 
 - [ ] Every number carries a provenance tag
 - [ ] No IPs, hostnames, usernames, home paths, project names

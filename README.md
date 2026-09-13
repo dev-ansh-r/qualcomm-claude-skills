@@ -33,8 +33,13 @@ the ones you need.
 
 ## First run
 
-Start with `qualcomm-env-discovery`. It writes a `.qualcomm-env` config that
-every other skill reads, so you name your machines once.
+Start with **`qualcomm-setup`**. It probes your machines, asks only what it
+cannot discover, and writes a `.qualcomm-env` config that every other skill
+reads — so you answer these questions once.
+
+Every other skill checks for that config's `QC_SETUP_VERSION` marker and sends
+you here if it is missing. A skill copied on its own still works: it falls back
+to asking the two questions inline.
 
 **No skill in this repo contains a hardcoded IP, hostname, or SDK path.**
 Endpoints are discovered or read from config. Any address you see in an example
@@ -43,7 +48,10 @@ is a placeholder.
 ## The three machines
 
 The workflow spans up to three hosts. They are frequently different boxes, and
-conflating them is a common source of "works on my machine".
+conflating them is a common source of "works on my machine". `qualcomm-setup`
+records which is which; the four common layouts are in
+`skills/qualcomm-setup/references/topologies.md`, including **"no board yet"**,
+which is a supported state rather than a blocker.
 
 | Role | Runs | Why separate |
 |---|---|---|
@@ -136,7 +144,8 @@ Check your target's architecture before taking either default.
 
 | Skill | Does | Host |
 |---|---|---|
-| `qualcomm-env-discovery` | Find board + servers, verify versions and SoC/HTP arch, write `.qualcomm-env` | local |
+| **`qualcomm-setup`** | **Start here.** Pick a layout, probe, write `.qualcomm-env` | local |
+| `qualcomm-env-discovery` | Re-probe and report drift in versions and SoC/HTP arch | local |
 | `qualcomm-sdk-preflight` | Check SDK deps are complete and usable | build host |
 | `qualcomm-sdk-docs` | Extract flags, op tables and arch mappings from *your* SDK; check a model's ops | build host |
 | `qnn-model-export` | Classic flow: static shapes → converter → model-lib-generator | build host |

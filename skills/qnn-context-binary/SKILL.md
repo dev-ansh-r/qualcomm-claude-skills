@@ -18,9 +18,35 @@ artifact and **where** the binary is compiled — see the repo README.
 Verified against **QAIRT 2.37.x**, target **QCS6490 / HTP v68**. Check
 `qairt-converter --help` before trusting a flag.
 
+## First run
+
+This skill reads `.qualcomm-env`. Check the **marker**, not the file — a config
+can exist and be half-written:
+
+```sh
+grep -q '^QC_SETUP_VERSION=' .qualcomm-env 2>/dev/null && echo ready || echo "run setup"
+```
+
+If it says `run setup`, run the **`qualcomm-setup`** skill first. It probes your
+machines, asks only what it cannot discover, and writes the config once so no
+other skill has to ask again.
+
+**If `qualcomm-setup` is not installed** — you copied this skill on its own —
+do not stop. Ask the two questions it would have asked, then continue:
+
+1. Which host runs the QAIRT SDK? (x86_64 Linux only; a Windows or macOS
+   workstation must drive a remote one, and WSL2 counts as Linux)
+2. How is the board reached — SSH, ADB, or not available yet?
+
+An empty field is not a blocker by itself. Where this skill needs one it will
+say which, and why.
+
 ## Prerequisites
 
-- `.qualcomm-env` from `qualcomm-env-discovery` (needs `QC_HTP_ARCH`)
+- `.qualcomm-env` from `qualcomm-setup`. This skill needs **`QC_HTP_ARCH`**
+  specifically — if it is empty because the board was not reachable at setup,
+  say so and stop here rather than guessing an architecture: the binary would
+  build and then fail to load
 - A static-shape ONNX model
 - Optionally `model.encodings` from `aimet-quantization` — **recommended for
   anything accuracy-critical**. (Available on the classic route too; it is not

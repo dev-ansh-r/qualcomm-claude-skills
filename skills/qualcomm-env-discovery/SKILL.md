@@ -5,9 +5,43 @@ description: Discover and verify a Qualcomm development environment for any Snap
 
 # Qualcomm environment discovery
 
-Run this before anything else. Every other Qualcomm skill assumes a
-`.qualcomm-env` exists and that the versions in it were read from the machines,
-not remembered.
+Probes the machines and reports what is actually installed.
+
+**This is not the first-run step — `qualcomm-setup` is.** The two differ:
+
+| | `qualcomm-setup` | this skill |
+|---|---|---|
+| When | Once, first time | Any time after |
+| Asks | Topology, board access | Nothing |
+| Writes | `.qualcomm-env` | Reports drift; does not overwrite |
+| For | "Get me started" | "What is on these machines *now*?" |
+
+Use this to re-verify before a build, after an SDK upgrade, or when a command
+fails for unclear reasons. Versions go stale silently, and a config that was
+right last month can be wrong today.
+
+## First run
+
+This skill reads `.qualcomm-env`. Check the **marker**, not the file — a config
+can exist and be half-written:
+
+```sh
+grep -q '^QC_SETUP_VERSION=' .qualcomm-env 2>/dev/null && echo ready || echo "run setup"
+```
+
+If it says `run setup`, run the **`qualcomm-setup`** skill first. It probes your
+machines, asks only what it cannot discover, and writes the config once so no
+other skill has to ask again.
+
+**If `qualcomm-setup` is not installed** — you copied this skill on its own —
+do not stop. Ask the two questions it would have asked, then continue:
+
+1. Which host runs the QAIRT SDK? (x86_64 Linux only; a Windows or macOS
+   workstation must drive a remote one, and WSL2 counts as Linux)
+2. How is the board reached — SSH, ADB, or not available yet?
+
+An empty field is not a blocker by itself. Where this skill needs one it will
+say which, and why.
 
 ## Why this is a skill and not a one-liner
 

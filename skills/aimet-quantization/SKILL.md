@@ -128,8 +128,21 @@ per Hexagon architecture; pick the one matching your target
 ```python
 import glob, os, aimet_onnx
 d = os.path.join(os.path.dirname(aimet_onnx.__file__), "common", "quantsim_config")
-print([os.path.basename(p) for p in glob.glob(os.path.join(d, "htp_quantsim_config_*.json"))])
+print(sorted(os.path.basename(p) for p in glob.glob(os.path.join(d, "*.json"))))
 ```
+
+AIMET **2.23.0** ships HTP configs for **v66, v68, v69, v73, v75, v79, v81**
+`[measured]`, plus `_per_channel_linear` variants for v69 and newer, and
+`backend_aware_*` and non-HTP targets (CPU, DSP, AIC100, LPAI).
+
+Two things follow:
+
+- **Glob the directory rather than trusting any list**, including this one. The
+  set grows with each release, and your part may need one that did not exist
+  when this was written.
+- **Prefer the `_per_channel_linear` variant** where it exists for your
+  architecture. Per-channel weight quantization is usually a clear accuracy win
+  on convolutional graphs, and this is the config that enables it.
 
 Quantizing with the wrong architecture's config produces encodings whose
 constraints do not match the hardware you deploy to.
@@ -138,11 +151,22 @@ constraints do not match the hardware you deploy to.
 
 Names differ by major version — check `QuantScheme` in your install.
 
-| Concept | AIMET 2.x | AIMET 1.x | When |
-|---|---|---|---|
-| Absolute min/max | `QuantScheme.min_max` | `post_training_tf` | Clean, bounded activations. **Shipped a production W8A16 ASR encoder** `[measured]` |
-| MSE-minimising search | *(see your release)* | `post_training_tf_enhanced` | Robust to outliers |
-| Percentile clipping | *(see your release)* | `post_training_percentile` | Heavy-tailed activations |
+Verified present in **AIMET 2.23.0** `[measured]`:
+
+| Scheme | Range from | When |
+|---|---|---|
+| `QuantScheme.min_max` | Absolute min/max observed | Clean, bounded activations. Sufficient for large models that hit their target |
+| `QuantScheme.post_training_tf_enhanced` | Search minimising MSE | Robust to outliers |
+| `QuantScheme.post_training_percentile` | Clipped percentile | Heavy-tailed activations |
+| `QuantScheme.training_range_learning*` | Learned during training | QAT, not PTQ |
+
+The `post_training_*` names survived into 2.x — they are **not** 1.x-only. List
+yours rather than assuming:
+
+```python
+from aimet_onnx.common.defs import QuantScheme
+print([m for m in dir(QuantScheme) if not m.startswith('_')])
+```
 
 An outlier-robust scheme is the safer general default `[convention]`, but
 `min_max` is not a fallback — it is sufficient for large models that meet their
@@ -158,13 +182,23 @@ and you have measured that you need the speed.
 ## Stage 2 — calibration
 
 ```python
-# AIMET 2.23: compute_encodings takes an ITERATOR OF INPUT DICTS,
-# not a forward-pass callback (that was the 1.x API).
-sim.compute_encodings(iter(calibration_inputs))   # [{"x": arr, ...}, ...]
+# AIMET 2.23 OVERLOADS this. Both forms are valid [measured]:
+sim.compute_encodings(iter(calibration_inputs))   # inputs:   [{"x": arr, ...}, ...]
+sim.compute_encodings(forward_pass_callback)      # callback: you drive the passes
 ```
 
-Each element is a dict mapping graph input name to a numpy array of the static
-shape — the same data you would feed ONNX Runtime.
+The signature reports `(*args, **kwargs)` because it dispatches, so
+`inspect.signature` tells you nothing — read the docstring instead:
+
+```python
+help(sim.compute_encodings)
+```
+
+The **inputs** form is simpler when you already have calibration tensors in
+memory: each element is a dict mapping graph input name to a numpy array of the
+static shape, exactly what you would feed ONNX Runtime. The **callback** form
+earns its keep when generating a sample is expensive or stateful and you want to
+stream rather than materialise the set.
 
 **Stateful / streaming models:** chain the states through the *float* model
 while building the calibration set, so each chunk sees realistic incoming state.

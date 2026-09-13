@@ -74,7 +74,7 @@ What it reads, and why each matters:
 | QAIRT/QNN version | `$QNN_SDK_ROOT` path, `sdk.yaml` | Flag names differ across majors |
 | SDK bin dirs | `ls $QNN_SDK_ROOT/bin/` | Confirms x86_64-linux-clang tools present |
 | HTP backend libs | `ls $QNN_SDK_ROOT/lib/hexagon-v*/` | The `v68`/`v73` dir names give the HTP arch |
-| eSDK toolchain | `environment-setup-*` under the eSDK root | Gives the `-t` triple for model-lib-generator |
+| eSDK toolchain | `environment-setup-*`, then ask the compiler `-dumpversion` | Gives the compiler prefix and gcc version. **Not** the `-t` value - that is a fixed enum in the tool |
 | Board arch/kernel | `uname -a` | Confirms aarch64 and the vendor kernel |
 | **SoC identity** | `/sys/devices/soc0/machine`, `soc_id` | **Which Qualcomm part this is** - drives HTP arch and op support |
 | Board image type | `test -w /usr` or `ostree admin status` | Immutable image ⇒ no on-device build |
@@ -147,7 +147,11 @@ QC_BUILD_HOST=<ssh alias or user@host>
 QC_QNN_SDK_ROOT=/opt/qcom/aistack/qairt/<version>
 QC_QAIRT_VERSION=<x.y.z.build>
 QC_ESDK_ENV=<path to environment-setup-*>
-QC_TARGET_TRIPLE=aarch64-oe-linux-gcc11.2
+QC_ESDK_CC_PREFIX=<e.g. aarch64-qcom-linux>   # what the eSDK actually provides
+QC_ESDK_GCC_VERSION=<e.g. 11.4.0>             # from the compiler, not the filename
+# -t is a FIXED ENUM in qnn-model-lib-generator (see its --help). It often
+# matches no eSDK triple exactly - pick the nearest and verify on the board.
+QC_TARGET_TRIPLE=<nearest supported target>
 
 QC_AIMET_HOST=<ssh alias or user@host>
 QC_AIMET_FLAVOUR=aimet-onnx       # or aimet-torch, or none

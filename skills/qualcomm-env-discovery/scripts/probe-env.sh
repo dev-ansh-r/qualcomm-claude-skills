@@ -121,10 +121,23 @@ for c in "$HOME"/*sdk*/environment-setup-* /opt/*sdk*/environment-setup-* \
 done
 if [ -n "$ESDK" ]; then
     emit QC_ESDK_ENV "$ESDK"
-    # the triple model-lib-generator wants, e.g. aarch64-oe-linux-gcc11.2
-    GCCV=$(grep -oE 'gcc[0-9]+\.[0-9]+' "$ESDK" 2>/dev/null | head -1)
-    emit QC_ESDK_HINT "${GCCV:-unknown}"
+    # The eSDK's own compiler prefix and version. NOT the -t value: that is a
+    # fixed enum inside qnn-model-lib-generator (see --help), and the eSDK
+    # triple often differs from every entry in it. Report both and let the
+    # caller pick the nearest supported target.
+    CCLINE=$(grep -m1 '^export CC=' "$ESDK" 2>/dev/null)
+    PREFIX=$(printf '%s' "$CCLINE" | grep -oE '[a-z0-9_]+-[a-z0-9_]+-linux(-musl)?' | head -1)
+    [ -n "$PREFIX" ] && emit QC_ESDK_CC_PREFIX "$PREFIX"
+    # Ask the compiler its version rather than parsing the setup script.
+    GCCV=$( (. "$ESDK" >/dev/null 2>&1; ${CC%% *} -dumpversion 2>/dev/null) )
+    [ -z "$GCCV" ] && [ -n "$PREFIX" ] && GCCV=$("${PREFIX}-gcc" -dumpversion 2>/dev/null)
+    emit QC_ESDK_GCC_VERSION "${GCCV:-unknown}"
     say "eSDK: $ESDK"
+    if [ -n "$GCCV" ]; then
+        say "eSDK compiler: ${PREFIX:-?}-gcc $GCCV"
+        say "  -t is a fixed enum in qnn-model-lib-generator - run --help and pick"
+        say "  the nearest supported target, then VERIFY the .so loads on the board."
+    fi
 else
     emit QC_ESDK_ENV ""
     say "No eSDK environment-setup found (needed for model-lib-generator and app cross-compile)"
@@ -178,8 +191,10 @@ else
     say "No working python3 - the converters are Python tools and will not run here"
 fi
 
-# ---------- thermal (board) ----------
-if [ -r /sys/class/thermal/thermal_zone0/temp ]; then
+# ---------- thermal ----------
+# Only meaningful on the target. An x86 build host also exposes thermal_zone0,
+# and reporting that as a "board" temperature is actively misleading.
+if [ "$ARCH" = "aarch64" ] && [ -r /sys/class/thermal/thermal_zone0/temp ]; then
     T=$(cat /sys/class/thermal/thermal_zone0/temp)
     emit QC_BOARD_TEMP_C "$((T/1000))"
     [ "$((T/1000))" -gt 70 ] && say "Board already at $((T/1000))C at idle - expect throttling under load"

@@ -336,10 +336,39 @@ qnn-model-lib-generator \
 
 Output: `QNN_Model_lib/aarch64-oe-linux-gcc11.2/libmodel.so`.
 
-- **The `-t` triple must match the board toolchain.** Read it from
-  `.qualcomm-env` (`QC_TARGET_TRIPLE`); do not copy it from an example.
-  A mismatch links against the wrong libc and fails at load with an unhelpful
-  error.
+### `-t` is a fixed list inside the tool, not your eSDK's triple
+
+This trips people up, because the two look like they should match and often do
+not `[measured]`. An eSDK can provide `aarch64-qcom-linux-gcc 11.4.0` while the
+tool accepts none of those words.
+
+**Read the supported list from the tool**, then pick the nearest entry:
+
+```sh
+qnn-model-lib-generator --help | grep -A4 'Supported targets'
+```
+
+On QAIRT 2.37.1 that list is `[measured]`:
+
+```text
+aarch64-ubuntu-gcc9.4   aarch64-oe-linux-gcc11.2   aarch64-oe-linux-gcc9.3
+aarch64-oe-linux-gcc8.2 aarch64-android            x86_64-linux-clang
+arm-android
+```
+
+So for a Qualcomm Linux eSDK on **gcc 11.4.0**, the nearest supported target is
+`aarch64-oe-linux-gcc11.2` — a near match on the C++ ABI, not an exact toolchain
+name. **Treat it as a candidate and confirm the `.so` actually loads on the
+board**; a bad choice links against the wrong libstdc++ and fails at load with
+an unhelpful error.
+
+**The default is a trap.** With no `-t`, the tool builds
+`[x86_64-linux-clang, aarch64-android]` — neither of which runs on a Linux
+aarch64 board. You get libraries, and a successful exit, and nothing deployable.
+Always pass `-t` explicitly.
+
+`-l <name>` sets the library name (`-l encoder_w8a16` → `libencoder_w8a16.so`);
+without it the name derives from the `.cpp` filename.
 - **This stage needs the eSDK**, unlike stage 3. This is where the ordering bug
   bites: sourcing QAIRT before the eSDK removes `qnn-model-lib-generator` from
   `PATH`.

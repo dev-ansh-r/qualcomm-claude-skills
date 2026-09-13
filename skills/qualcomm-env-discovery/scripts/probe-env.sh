@@ -179,6 +179,31 @@ if command -v python3 >/dev/null 2>&1; then
 fi
 if [ -n "$PYV" ]; then
     emit QC_PYTHON "$PYV"
+
+    # Can this python actually CREATE a venv? `import venv` succeeding is not
+    # enough: `python3 -m venv` needs ensurepip, which Debian/Ubuntu ship in a
+    # separate python3.x-venv package. Without it, venv creation fails AFTER
+    # making the directory, and a careless wrapper reports success. [measured]
+    if python3 -c 'import ensurepip' 2>/dev/null; then
+        emit QC_PY_CAN_MKVENV true
+    else
+        emit QC_PY_CAN_MKVENV false
+        say "python3 -m venv will FAIL here: ensurepip is missing."
+        say "  Fix: 'apt install python3-venv' (needs sudo), or use virtualenv"
+        say "  ('pip install --user virtualenv'), which bundles its own pip."
+    fi
+
+    # Where the packages this python imports actually live. A user-site install
+    # (~/.local) is visible to EVERY python3 on the host, so a --user install
+    # for one tool can silently change another tool's numpy.
+    USERSITE=$(python3 -c 'import site;print(site.ENABLE_USER_SITE and site.getusersitepackages() or "")' 2>/dev/null)
+    if [ -n "$USERSITE" ] && python3 -c "import numpy,sys; sys.exit(0 if numpy.__file__.startswith('$USERSITE') else 1)" 2>/dev/null; then
+        emit QC_PY_NUMPY_IN_USERSITE true
+        say "numpy comes from user-site ($USERSITE)"
+        say "  Any 'pip install --user' can change it under the converter."
+        say "  Install other toolchains into an ISOLATED venv, and export"
+        say "  PYTHONNOUSERSITE=1 so user-site cannot shadow it."
+    fi
     for m in onnx onnxruntime numpy aimet_onnx aimet_torch torch; do
         V=$(python3 -c "import $m,sys; sys.stdout.write(getattr($m,'__version__','present'))" 2>/dev/null)
         [ -n "$V" ] && emit "QC_PY_${m}" "$V"

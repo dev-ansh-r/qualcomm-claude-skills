@@ -114,6 +114,55 @@ survives being run from a shell where someone else already exported it.
 The same applies to `LD_LIBRARY_PATH` (above): **activation does not isolate
 you from variables the parent shell exported.**
 
+## PYTHONNOUSERSITE hides more than you intend
+
+`PYTHONNOUSERSITE=1` is the clean way to stop a user-site package shadowing a
+venv. But on a host where `pip` was installed with `--user`, **pip lives in
+user-site too**, so the flag hides the very tool you are trying to use
+`[measured]`:
+
+```text
+/usr/bin/python3: No module named pip
+```
+
+Two rules that follow:
+
+- **Bootstrap first, isolate second.** Install `virtualenv` (or create the venv)
+  *without* the flag, then rely on the venv for isolation — a virtualenv does
+  not see user-site by default, so the flag is belt-and-braces, not the
+  mechanism.
+- **Check where pip lives before assuming it is system-wide:**
+  `python3 -c 'import pip; print(pip.__file__)'`
+
+## `python3 -m venv` can fail after creating the directory
+
+On Debian and Ubuntu, `ensurepip` ships in a **separate** `python3.x-venv`
+package. Without it, `python3 -m venv` creates `bin/python*` and then fails to
+install pip — leaving a directory that looks like a venv and has no `pip`
+`[measured]`.
+
+**`import venv` succeeding does not mean venv creation works.** Test the thing
+you need:
+
+```sh
+python3 -c 'import ensurepip' || echo "python3 -m venv will fail here"
+```
+
+Without sudo, `pip install --user virtualenv` is the way out — `virtualenv`
+bundles its own pip and needs no `ensurepip`.
+
+## A user-site numpy is a shared mutable dependency
+
+If `numpy` resolves to `~/.local/lib/...`, every `python3` on the host sees it,
+and **any `pip install --user` for an unrelated tool can change it underneath
+the converter** — which is pinned to 1.26.4 and breaks on 2.x.
+
+```sh
+python3 -c 'import numpy; print(numpy.__file__)'    # ~/.local/... is the warning
+```
+
+Install other toolchains into their own virtualenv. Never `--user`.
+
 ## On the board
 
 Different problem — the board has no SDK, only the runtime:

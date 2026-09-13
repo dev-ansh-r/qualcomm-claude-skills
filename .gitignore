@@ -22,3 +22,6 @@ __pycache__/
 
 # Extracted SDK documentation cache - derived, large, install-specific.
 .qualcomm-docs/
+
+# CI scratch from tests/run-tests.sh | tee result.txt
+result.txt

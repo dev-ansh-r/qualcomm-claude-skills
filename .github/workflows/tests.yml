@@ -1,0 +1,81 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # The suite as a maintainer runs it: every check, nothing skipped.
+  full:
+    name: full suite (with onnx)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The leak scan reads every commit message, not just the tip. A
+          # shallow clone would pass it vacuously - a false green.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install onnx
+        run: python -m pip install --disable-pip-version-check --quiet onnx
+
+      - name: Run the suite
+        shell: bash
+        run: |
+          set -o pipefail
+          bash tests/run-tests.sh | tee result.txt
+          # With onnx present every check must actually run. A silent skip
+          # here would mean the model-operator group stopped executing.
+          tail -1 result.txt | grep -qE '0 failed, 0 skipped' \
+            || { echo "::error::expected a full run with nothing skipped"; exit 1; }
+
+  # What a contributor gets on a clean machine: no onnx, so the
+  # model-operator group skips. That path must still be a pass.
+  no-onnx:
+    name: default run (no onnx)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run the suite without onnx
+        shell: bash
+        run: |
+          set -o pipefail
+          bash tests/run-tests.sh | tee result.txt
+          # Guards against this job quietly gaining onnx and silently
+          # becoming a duplicate of `full`.
+          tail -1 result.txt | grep -qE '0 failed, [1-9][0-9]* skipped' \
+            || { echo "::error::expected the onnx-dependent group to skip"; exit 1; }
+
+  # These scripts run on Linux build hosts and on the target board, where a
+  # quoting bug is a failed deploy rather than a local annoyance.
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint every shell script
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck
+          shellcheck --version
+          # SC1091: the SDK and eSDK env files being sourced do not exist in CI.
+          find . -name '*.sh' -not -path './.git/*' -print0 \
+            | xargs -0 shellcheck --severity=warning --exclude=SC1091

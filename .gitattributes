@@ -6,6 +6,7 @@
 *.md  text eol=lf
 *.yaml text eol=lf
 *.json text eol=lf
+*.svg  text eol=lf
 
 # Binary model artifacts, should they ever be force-added
 *.bin binary

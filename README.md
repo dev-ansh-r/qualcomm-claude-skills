@@ -1,3 +1,17 @@
+<p align="center">
+  <img src="docs/banner.svg" width="840"
+       alt="Claude Skills for Qualcomm QAIRT / Hexagon HTP - ONNX, convert, quantize, Hexagon HTP">
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img alt="License Apache-2.0"
+     src="https://img.shields.io/badge/license-Apache--2.0-3b82f6"></a>
+  <img alt="8 skills" src="https://img.shields.io/badge/skills-8-8b5cf6">
+  <img alt="Examples verified against QAIRT 2.37.x"
+     src="https://img.shields.io/badge/examples_verified_on-QAIRT%202.37.x-14b8a6">
+  <img alt="Part agnostic" src="https://img.shields.io/badge/parts-QCS%20%C2%B7%20QCM%20%C2%B7%20SA%20%C2%B7%20SM%20%C2%B7%20QRB-64748b">
+</p>
+
 # Claude Skills for Qualcomm QAIRT / Hexagon HTP
 
 A set of Claude Code skills for developers taking a model from ONNX to running

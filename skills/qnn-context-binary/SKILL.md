@@ -185,10 +185,10 @@ Confirm before building:
 ls -d "$QNN_SDK_ROOT"/lib/hexagon-v*/
 ```
 
-Determine your part's architecture rather than assuming it — see
-`qualcomm-env-discovery` step 4. For reference, QCS6490 is **HTP v68**
-`[vendor-claimed]`; other parts differ, and the version does not track the part
-number in any extrapolable pattern.
+Determine your part's architecture rather than assuming it — `qualcomm-env-discovery`
+step 4 runs `qnn-platform-validator --coreVersion`, which has the backend report
+its own. QCS6490 is **HTP v68** `[measured]`; other parts differ, and the
+version does not track the part number in any extrapolable pattern.
 
 **Encode the arch in the filename** (`model_w8a16_v68.bin`). It is the single
 fact most likely to be lost when a binary is copied between machines, and its

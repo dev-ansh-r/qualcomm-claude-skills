@@ -128,20 +128,39 @@ separate questions:
 ls -d "$QNN_SDK_ROOT"/lib/hexagon-v*/ 2>/dev/null
 ```
 
-**(b) What does this part need?** Four sources, most authoritative first:
+**(b) What does this part need?** Ask the backend. It knows `[measured]`:
 
 ```sh
-# 1. The kernel, on the board - what the part actually is
-cat /sys/devices/soc0/machine /sys/devices/soc0/soc_id 2>/dev/null
-
-# 2. The backend's own report, if the SDK runtime is staged on the board
-qnn-platform-validator --help        # check flags first; they vary by release
-
-# 3. The SoC -> HTP arch mapping in the SDK-LOCAL docs (version-exact)
-#    Extract it with the qualcomm-sdk-docs skill.
-
-# 4. The part's datasheet - last, and treat as [vendor-claimed]
+# On the board. Writes only under --targetPath; point it at tmpfs.
+LD_LIBRARY_PATH=/usr/lib:$LD_LIBRARY_PATH qnn-platform-validator --backend dsp --coreVersion --targetPath /tmp/pv
 ```
+
+```text
+Core Version of the backend DSP: Hexagon Architecture V68
+```
+
+That is the authoritative answer — the backend reporting its own capability,
+not a lookup. `scripts/probe-env.sh` runs it automatically when the tool is
+present and emits `QC_HTP_ARCH_DETECTED`.
+
+Corroborate with the Skel the runtime actually loads:
+
+```sh
+ls /usr/lib/dsp/cdsp/libQnnHtpV*Skel.so     # e.g. libQnnHtpV68Skel.so
+```
+
+Fallbacks, if `qnn-platform-validator` is absent:
+
+```sh
+cat /sys/devices/soc0/machine /sys/devices/soc0/soc_id   # which part this is
+```
+
+then the SoC → arch mapping in the **SDK-local docs** (`qualcomm-sdk-docs`), and
+the datasheet last, treated as `[vendor-claimed]`.
+
+Note the board's `/usr/lib/libQnnHtpV*Stub.so` set spans many architectures — it
+is the runtime's stub collection, **not** an answer for your part. Only the
+backend report and the loaded Skel identify the one in use.
 
 The answer to (b) must appear in the list from (a). If it does not, the SDK is
 missing that architecture's support package: a context binary will build on the
@@ -157,7 +176,7 @@ Known values, and the only one this repo has evidence for:
 
 | Part | HTP arch | Provenance |
 |---|---|---|
-| QCS6490 | v68 | `[vendor-claimed]` |
+| QCS6490 (SoC id 498) | v68 | `[measured]` — backend `--coreVersion` reported "Hexagon Architecture V68"; `libQnnHtpV68Skel.so` loaded |
 
 Add a row when you have verified one — see `docs/CONTRIBUTING.md`. An unverified
 row is worse than an absent one.

@@ -192,11 +192,34 @@ Do not promote one to another without a measurement.
 - `[inferred]` — reasoned from the above; may not hold
 - `[convention]` — engineering judgment or common practice, not a measurement
 
-**Nothing in this repo has been executed end-to-end against hardware as part of
-authoring it.** The commands and flags were taken from working notebooks and
-scripts; the shell and Python here pass syntax checks, which is not the same as
-being run. Treat the first execution on your setup as a verification pass, and
-fix what you find — see `docs/CONTRIBUTING.md`.
+### What has and has not been verified
+
+Be precise about this rather than trusting the whole document equally.
+
+**Verified against real hardware** — a QAIRT 2.37.1 build host and a QCS6490
+board:
+
+- environment discovery on an x86_64 Linux build host, an aarch64 board, and a
+  Windows workstation (which cannot host the toolchain at all)
+- SoC identity and **HTP architecture read from the backend itself**
+  (`qnn-platform-validator --coreVersion`), not inferred from the part number
+- the `qnn-model-lib-generator` target list, which is a fixed enum that need not
+  match your eSDK's triple
+- the AIMET 2.23 API surface, by introspecting an install
+- SDK doc extraction and model-operator checking, against synthetic SDK trees
+  and real ONNX models
+
+**Not executed by this repo** — written from working recipes, and the place to
+expect a first-run surprise:
+
+- a full model conversion end to end (`qnn-onnx-converter` → `.so` → context
+  binary) on a real model
+- AIMET quantization of a real model and the accuracy figures that follow
+- on-board context-binary generation and HTP-vs-CPU numerical comparison
+
+Where a claim rests on a recipe rather than an execution, the provenance tag
+says so. Treat your first run as a verification pass and send a pull request for
+what you find — `tests/run-tests.sh` enforces the invariants.
 
 **Version scope.** The *flow* is part-agnostic. The *examples* were verified
 against **QAIRT 2.37.x** on a **QCS6490 (Hexagon HTP v68)** with eSDK toolchain
@@ -214,3 +237,19 @@ never assume:
 
 Flags and tool names also move between QAIRT majors, so every skill re-checks
 the installed version before trusting its own examples.
+
+## License
+
+Apache-2.0 — see [`LICENSE`](LICENSE).
+
+Copyright 2026 dev-ansh-r
+
+Apache-2.0 was chosen over MIT for its explicit patent grant, which matters for
+content concerning a hardware vendor's toolchain, and because Qualcomm's own
+AIMET uses it.
+
+**Not affiliated with or endorsed by Qualcomm.** QAIRT, QNN, Hexagon, Snapdragon
+and AIMET are trademarks of Qualcomm Technologies, Inc. This repository contains
+no Qualcomm source code or SDK material — only independently written guidance
+about using publicly documented tools, plus scripts that read what you have
+installed.

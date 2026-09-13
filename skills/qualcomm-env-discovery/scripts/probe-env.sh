@@ -22,7 +22,19 @@ emit PROBE_OS_KERNEL "$OSNAME"
 # host the answer is not "install the SDK", it is "use a different host", and
 # saying so early saves someone a download.
 case "$OSNAME" in
-    Linux)  emit QC_CAN_HOST_SDK true ;;
+    Linux)
+        # Linux is necessary but NOT sufficient: the converters ship only as
+        # bin/x86_64-linux-clang. An aarch64 board runs the output; it cannot
+        # produce it.
+        if [ "$ARCH" = "x86_64" ]; then
+            emit QC_CAN_HOST_SDK true
+        else
+            emit QC_CAN_HOST_SDK false
+            emit QC_HOST_KIND "linux-$ARCH"
+            say "Linux on $ARCH - the QAIRT converters are x86_64 only, so this"
+            say "host runs models but cannot build them. Cross-compile elsewhere."
+        fi
+        ;;
     MINGW*|MSYS*|CYGWIN*|Windows_NT)
         emit QC_CAN_HOST_SDK false
         emit QC_HOST_KIND windows
@@ -157,8 +169,22 @@ if [ "$ARCH" = "aarch64" ]; then
     # check --help before relying on the output.
     if command -v qnn-platform-validator >/dev/null 2>&1; then
         emit QC_HAS_PLATFORM_VALIDATOR true
-        say "qnn-platform-validator present - run it to have the backend report its own capability"
+        # The authoritative answer to "which Hexagon architecture is this?".
+        # Writes only under --targetPath, which we point at /tmp (tmpfs) so
+        # nothing touches an eMMC-backed mount.
+        PV=$(LD_LIBRARY_PATH=/usr/lib:${LD_LIBRARY_PATH:-}              qnn-platform-validator --backend dsp --coreVersion              --targetPath /tmp/qc-pv 2>/dev/null | grep -iE 'Core Version' | head -1)
+        ARCHV=$(printf '%s' "$PV" | grep -oiE 'V[0-9]{2,3}' | head -1 | tr 'A-Z' 'a-z')
+        if [ -n "$ARCHV" ]; then
+            emit QC_HTP_ARCH_DETECTED "$ARCHV"
+            say "HTP architecture $ARCHV - reported by the backend itself (authoritative)"
+        else
+            say "qnn-platform-validator present but did not report a core version"
+        fi
+        rm -rf /tmp/qc-pv 2>/dev/null
     fi
+    # Which Skel the runtime actually loads corroborates the above.
+    SKEL=$(ls /usr/lib/dsp/cdsp/libQnnHtpV*Skel.so 2>/dev/null | head -1)
+    [ -n "$SKEL" ] && emit QC_HTP_SKEL_LOADED "$(basename "$SKEL")"
 fi
 
 # ---------- on-device QNN runtime ----------
@@ -219,10 +245,22 @@ fi
 # ---------- thermal ----------
 # Only meaningful on the target. An x86 build host also exposes thermal_zone0,
 # and reporting that as a "board" temperature is actively misleading.
-if [ "$ARCH" = "aarch64" ] && [ -r /sys/class/thermal/thermal_zone0/temp ]; then
-    T=$(cat /sys/class/thermal/thermal_zone0/temp)
-    emit QC_BOARD_TEMP_C "$((T/1000))"
-    [ "$((T/1000))" -gt 70 ] && say "Board already at $((T/1000))C at idle - expect throttling under load"
+# thermal_zone0 is NOT the CPU on every board - one reported 4 C while running.
+# Take the hottest zone and name it, rather than trusting zone 0. [measured]
+if [ "$ARCH" = "aarch64" ]; then
+    HOT=-1; HOTNAME=""
+    for z in /sys/class/thermal/thermal_zone*/; do
+        [ -r "$z/temp" ] || continue
+        T=$(cat "$z/temp" 2>/dev/null) || continue
+        case "$T" in ''|*[!0-9-]*) continue ;; esac
+        C=$((T/1000))
+        [ "$C" -gt "$HOT" ] && { HOT=$C; HOTNAME=$(cat "$z/type" 2>/dev/null || basename "$z"); }
+    done
+    if [ "$HOT" -gt -1 ]; then
+        emit QC_BOARD_TEMP_C "$HOT"
+        emit QC_BOARD_TEMP_ZONE "$HOTNAME"
+        [ "$HOT" -gt 70 ] && say "Hottest zone ($HOTNAME) already $HOT C at idle - expect throttling"
+    fi
 fi
 
 echo "=== probe complete ===" >&2

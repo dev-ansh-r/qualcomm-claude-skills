@@ -160,8 +160,10 @@ bash tests/run-tests.sh            # everything
 bash tests/run-tests.sh --quick    # structure and lint only
 ```
 
-Needs `bash` and a working `python3`. `onnx` is optional — the model-operator
-tests skip cleanly without it. Nothing is written outside a scratch directory,
+Needs `bash` and a working `python3`. `onnx` is optional: without it the
+model-operator group skips, so a default run reports **36 passed, 0 failed, 1
+skipped** — that is a pass, not a partial failure. With `onnx` installed all
+**39** checks run. Nothing is written outside a scratch directory,
 and no test contacts a network or a board.
 
 What it enforces, beyond the obvious syntax checks:

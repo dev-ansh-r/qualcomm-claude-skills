@@ -57,7 +57,11 @@ echo "out     : $OUT_DIR"
 
 # ---------- HTP arch must exist BEFORE we build ----------
 step "HTP architecture"
-AVAIL="$(ls -d "$QNN_SDK_ROOT"/lib/hexagon-v*/ 2>/dev/null | xargs -n1 basename 2>/dev/null | tr '\n' ' ')"
+AVAIL=""
+for d in "$QNN_SDK_ROOT"/lib/hexagon-v*/; do
+    [ -d "$d" ] || continue
+    AVAIL="${AVAIL:+$AVAIL }$(basename "$d")"
+done
 [ -n "$AVAIL" ] || die "no hexagon-v* libraries in the SDK - HTP backend cannot build"
 echo "available: $AVAIL"
 if [ -n "${QC_HTP_ARCH:-}" ]; then

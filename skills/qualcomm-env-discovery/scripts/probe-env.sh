@@ -92,7 +92,11 @@ elif [ -n "$SDK" ] && [ -d "$SDK" ]; then
     # HTP architecture support - the load-bearing one
     # What the SDK can BUILD for. Which of these your part NEEDS is a separate
     # question, answered by the board's SoC id + the SDK-local docs.
-    HTP=$(ls -d "$SDK"/lib/hexagon-v*/ 2>/dev/null | xargs -n1 basename 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+    HTP=""
+    for d in "$SDK"/lib/hexagon-v*/; do
+        [ -d "$d" ] || continue
+        HTP="${HTP:+$HTP,}$(basename "$d")"
+    done
     emit QC_HTP_ARCH_AVAILABLE "${HTP:-none}"
     if [ -z "$HTP" ]; then
         say "WARNING: no hexagon-v* libs found - HTP backend will not build"
@@ -141,6 +145,7 @@ if [ -n "$ESDK" ]; then
     PREFIX=$(printf '%s' "$CCLINE" | grep -oE '[a-z0-9_]+-[a-z0-9_]+-linux(-musl)?' | head -1)
     [ -n "$PREFIX" ] && emit QC_ESDK_CC_PREFIX "$PREFIX"
     # Ask the compiler its version rather than parsing the setup script.
+    # shellcheck source=/dev/null  # generated per eSDK install, no fixed path
     GCCV=$( (. "$ESDK" >/dev/null 2>&1; ${CC%% *} -dumpversion 2>/dev/null) )
     [ -z "$GCCV" ] && [ -n "$PREFIX" ] && GCCV=$("${PREFIX}-gcc" -dumpversion 2>/dev/null)
     emit QC_ESDK_GCC_VERSION "${GCCV:-unknown}"
@@ -189,7 +194,11 @@ fi
 
 # ---------- on-device QNN runtime ----------
 if [ "$ARCH" = "aarch64" ]; then
-    LIBS=$(ls /usr/lib/libQnn*.so 2>/dev/null | xargs -n1 basename 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+    LIBS=""
+    for f in /usr/lib/libQnn*.so; do
+        [ -e "$f" ] || continue
+        LIBS="${LIBS:+$LIBS,}$(basename "$f")"
+    done
     emit QC_BOARD_QNN_LIBS "${LIBS:-none}"
     [ -z "$LIBS" ] && say "WARNING: no libQnn*.so in /usr/lib - qnn-net-run will not run here"
     emit QC_BOARD_UPTIME "$(uptime -p 2>/dev/null || true)"

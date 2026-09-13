@@ -8,7 +8,7 @@
 # Touches nothing outside a scratch dir and never contacts a network or a board.
 
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || { echo "cannot reach the repo root"; exit 2; }
 ROOT="$(pwd)"
 SCRATCH="$(mktemp -d 2>/dev/null || echo "${TMPDIR:-/tmp}/qskills-test-$$")"
 mkdir -p "$SCRATCH"
@@ -34,7 +34,7 @@ done
 # ---------------------------------------------------------------- structure
 group "Structure"
 
-SKILLS=$(ls -d skills/*/ 2>/dev/null | xargs -n1 basename)
+SKILLS=$(for d in skills/*/; do [ -d "$d" ] && basename "$d"; done)
 N=$(echo "$SKILLS" | grep -c . || echo 0)
 [ "$N" -ge 1 ] && ok "found $N skills" || bad "no skills found"
 
@@ -142,16 +142,21 @@ PYEOF
 
 # --------------------------------------------------------------- syntax
 group "Syntax"
-E=0; for f in $(find skills tests -name '*.sh' 2>/dev/null); do bash -n "$f" 2>/dev/null || { bad "bash -n: $f"; E=1; }; done
+E=0
+while IFS= read -r f; do
+    bash -n "$f" 2>/dev/null || { bad "bash -n: $f"; E=1; }
+done < <(find skills tests -name '*.sh' 2>/dev/null)
 [ $E -eq 0 ] && ok "all shell scripts parse"
-E=0; for f in $(find skills -name '*.py' 2>/dev/null); do
+E=0
+while IFS= read -r f; do
     "$PY" -c "import ast,sys;ast.parse(open(sys.argv[1],encoding='utf-8').read())" "$f" 2>/dev/null || { bad "ast.parse: $f"; E=1; }
-done
+done < <(find skills -name '*.py' 2>/dev/null)
 [ $E -eq 0 ] && ok "all python scripts parse"
 
-E=0; for f in $(find skills -name '*.sh' -o -name '*.py' 2>/dev/null); do
+E=0
+while IFS= read -r f; do
     git ls-files -s "$f" 2>/dev/null | grep -q '^100755' || { bad "not executable in index: $f"; E=1; }
-done
+done < <(find skills \( -name '*.sh' -o -name '*.py' \) 2>/dev/null)
 [ $E -eq 0 ] && ok "scripts are executable in the git index"
 
 [ "$QUICK" -eq 1 ] && { printf '\n\033[1m%d passed, %d failed, %d skipped (quick)\033[0m\n' $PASS $FAIL $SKIP; exit $((FAIL>0)); }

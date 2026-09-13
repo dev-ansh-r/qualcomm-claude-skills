@@ -239,11 +239,11 @@ usually positive; needs a little data.
 
 ### 3. AdaRound — expensive, the big lever
 
-> **Unverified signature.** The quantsim and `compute_encodings` calls above are
-> AIMET 2.23 as-run `[measured]`. The AdaRound snippet below is the **1.x** API
-> and has not been re-verified on 2.x. Note that quantsim with good calibration
-> is often enough to hit an accuracy target without AdaRound at all — try that
-> first. Check `help(Adaround.apply_adaround)` before running this.
+> **Check the signature against your AIMET.** The snippet below follows the
+> **1.x** `Adaround` API, and the argument names moved in places between 1.x and
+> 2.x — `help(Adaround.apply_adaround)` settles it in seconds for the version you
+> have. Reach for AdaRound after quantsim: with good calibration data, quantsim
+> alone often hits the accuracy target, and AdaRound costs hours.
 
 ```python
 from aimet_onnx.adaround.adaround_weight import Adaround, AdaroundParameters

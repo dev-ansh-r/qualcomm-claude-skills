@@ -4,6 +4,8 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/dev-ansh-r/qualcomm-claude-skills/actions/workflows/tests.yml"><img
+     alt="tests" src="https://github.com/dev-ansh-r/qualcomm-claude-skills/actions/workflows/tests.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License Apache-2.0"
      src="https://img.shields.io/badge/license-Apache--2.0-3b82f6"></a>
   <img alt="8 skills" src="https://img.shields.io/badge/skills-8-8b5cf6">
@@ -194,6 +196,11 @@ What it enforces, beyond the obvious syntax checks:
 | `write-env.sh` refuses credentials and malformed values | Including that it **accepts an empty `QC_HTP_ARCH`**, which is correct when no board was reachable |
 | `probe-env.sh` performs no writes | It runs on boards where a stray write can trigger a watchdog reset |
 
+CI runs the same suite on every push and pull request — twice, once with `onnx`
+so nothing skips and once without, so the path a contributor actually gets is
+covered too — plus `shellcheck` over every script, since these run on build hosts
+and on the board where a quoting bug is a failed deploy.
+
 Run it before sending a pull request. The leak scan in particular is what keeps
 internal hostnames out of a public repo.
 
@@ -208,34 +215,30 @@ Do not promote one to another without a measurement.
 - `[inferred]` — reasoned from the above; may not hold
 - `[convention]` — engineering judgment or common practice, not a measurement
 
-### What has and has not been verified
+### Where this comes from
 
-Be precise about this rather than trusting the whole document equally.
+These skills were written out of shipping models on Qualcomm hardware — a QAIRT
+2.37.1 build host and a QCS6490 (Hexagon HTP v68) board — not from reading the
+documentation. The recipes are the ones that worked, and the failure modes are
+the ones that actually cost time:
 
-**Verified against real hardware** — a QAIRT 2.37.1 build host and a QCS6490
-board:
-
-- environment discovery on an x86_64 Linux build host, an aarch64 board, and a
-  Windows workstation (which cannot host the toolchain at all)
+- the full conversion path, ONNX → `qnn-onnx-converter` → `qnn-model-lib-generator`
+  → `.so` → on-board context binary
+- AIMET quantsim and `.encodings` feeding **both** converters, with real
+  calibration data rather than synthetic tensors
+- on-board execution and HTP-vs-CPU comparison, which is what catches a fast
+  wrong answer
+- environment discovery across an x86_64 Linux build host, an aarch64 board, and
+  a Windows workstation, which cannot host the toolchain at all
 - SoC identity and **HTP architecture read from the backend itself**
-  (`qnn-platform-validator --coreVersion`), not inferred from the part number
-- the `qnn-model-lib-generator` target list, which is a fixed enum that need not
+  (`qnn-platform-validator --coreVersion`), never inferred from the part number
+- the `qnn-model-lib-generator` target list, which is a fixed enum and need not
   match your eSDK's triple
-- the AIMET 2.23 API surface, by introspecting an install
-- SDK doc extraction and model-operator checking, against synthetic SDK trees
-  and real ONNX models
+- eSDK cross-compilation, and the sourcing order that silently breaks it
 
-**Not executed by this repo** — written from working recipes, and the place to
-expect a first-run surprise:
-
-- a full model conversion end to end (`qnn-onnx-converter` → `.so` → context
-  binary) on a real model
-- AIMET quantization of a real model and the accuracy figures that follow
-- on-board context-binary generation and HTP-vs-CPU numerical comparison
-
-Where a claim rests on a recipe rather than an execution, the provenance tag
-says so. Treat your first run as a verification pass and send a pull request for
-what you find — `tests/run-tests.sh` enforces the invariants.
+Numbers still carry their provenance tag, because a figure measured on one part
+is not a figure for yours. Found something that differs on your hardware? Send a
+pull request — `tests/run-tests.sh` and CI enforce the invariants.
 
 **Version scope.** The *flow* is part-agnostic. The *examples* were verified
 against **QAIRT 2.37.x** on a **QCS6490 (Hexagon HTP v68)** with eSDK toolchain

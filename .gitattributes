@@ -8,6 +8,11 @@
 *.json text eol=lf
 *.svg  text eol=lf
 
+# Repo artwork - README banner (docs/banner.svg) and the social-preview
+# card uploaded by hand in Settings > General > Social preview.
+*.png binary
+*.jpg binary
+
 # Binary model artifacts, should they ever be force-added
 *.bin binary
 *.dlc binary

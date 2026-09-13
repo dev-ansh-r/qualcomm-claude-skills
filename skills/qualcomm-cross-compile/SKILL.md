@@ -15,9 +15,14 @@ Everything is cross-compiled on an x86_64 host against the eSDK and deployed.
 edit (workstation)  ->  sync  ->  build (x86_64 Linux host)  ->  deploy (board)
 ```
 
-Accept it rather than fighting it. If your workstation is Windows or macOS, it
-cannot run colcon or the eSDK at all — propose the host command rather than
-attempting a local build.
+Accept it rather than fighting it. If your workstation is Windows or macOS it
+cannot run colcon, the eSDK **or the QAIRT converters** — those are x86_64 Linux
+binaries. Propose the build-host command rather than attempting anything
+locally.
+
+**WSL2 counts as a Linux host** and is the usual answer for a Windows
+workstation that wants to build locally. Git Bash, MSYS and Cygwin do not —
+they provide a POSIX shell, not a Linux userland the SDK can run in.
 
 Check which case you are in:
 

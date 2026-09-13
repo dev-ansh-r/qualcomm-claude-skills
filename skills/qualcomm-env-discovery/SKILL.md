@@ -23,9 +23,16 @@ does.
 
 | Role | Identify by | Must have |
 |---|---|---|
-| `BUILD_HOST` | x86_64 Linux | QAIRT SDK, `bin/x86_64-linux-clang/`, Yocto/QIRP eSDK |
+| `BUILD_HOST` | **x86_64 Linux only** | QAIRT SDK, `bin/x86_64-linux-clang/`, Yocto/QIRP eSDK |
 | `AIMET_HOST` | x86_64 Linux, often GPU | `aimet-onnx` or `aimet-torch` importable |
 | `BOARD` | aarch64 Qualcomm part | `libQnnHtp.so`, HTP firmware |
+
+**A Windows or macOS workstation cannot be the build host.** The QAIRT
+converters ship only as `bin/x86_64-linux-clang`; Git Bash and MSYS are not
+Linux, though WSL2 is. This is normal and not a problem — the workstation edits
+the source and drives a Linux build host over SSH. `scripts/probe-env.sh`
+detects and reports this rather than listing the resulting missing pieces one by
+one.
 
 ## Procedure
 

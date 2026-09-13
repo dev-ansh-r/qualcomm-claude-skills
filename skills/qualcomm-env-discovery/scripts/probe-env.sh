@@ -10,10 +10,36 @@ echo "=== probe-env.sh on $(hostname) ===" >&2
 
 # ---------- platform ----------
 ARCH=$(uname -m)
+OSNAME=$(uname -s)
 emit PROBE_HOST "$(hostname)"
 emit PROBE_ARCH "$ARCH"
 emit PROBE_KERNEL "$(uname -r)"
+emit PROBE_OS_KERNEL "$OSNAME"
 [ -r /etc/os-release ] && emit PROBE_OS "$(. /etc/os-release; echo "$PRETTY_NAME")"
+
+# Can this host run the SDK at all? The converters ship only as
+# bin/x86_64-linux-clang - there is no Windows or macOS build. On a non-Linux
+# host the answer is not "install the SDK", it is "use a different host", and
+# saying so early saves someone a download.
+case "$OSNAME" in
+    Linux)  emit QC_CAN_HOST_SDK true ;;
+    MINGW*|MSYS*|CYGWIN*|Windows_NT)
+        emit QC_CAN_HOST_SDK false
+        emit QC_HOST_KIND windows
+        say "WINDOWS HOST - the QAIRT converters are x86_64 LINUX only. This"
+        say "machine cannot be a build host: no SDK install will change that."
+        say "Edit here, build on a Linux host, deploy to the board. WSL2 counts"
+        say "as a Linux host; Git Bash and MSYS do not."
+        ;;
+    Darwin)
+        emit QC_CAN_HOST_SDK false
+        emit QC_HOST_KIND macos
+        say "macOS HOST - the QAIRT converters are x86_64 Linux only. Use a"
+        say "Linux build host; this machine can still edit and drive it."
+        ;;
+    *)  emit QC_CAN_HOST_SDK unknown
+        say "Unrecognised OS '$OSNAME' - SDK support unverified here" ;;
+esac
 
 # ---------- immutability (board) ----------
 # NOTE: tested with [ -w ], never by writing a probe file. This script must not
@@ -37,7 +63,11 @@ if [ -z "$SDK" ]; then
     done
 fi
 
-if [ -n "$SDK" ] && [ -d "$SDK" ]; then
+# On a host that cannot run the SDK, an absent SDK is expected, not a fault.
+if [ "${OSNAME}" != "Linux" ] && [ -z "$SDK" ]; then
+    emit QC_QNN_SDK_ROOT ""
+    say "No SDK here, and none is possible on this OS - this is expected, not a fault."
+elif [ -n "$SDK" ] && [ -d "$SDK" ]; then
     emit QC_QNN_SDK_ROOT "$SDK"
     VER=$(basename "$SDK")
     # sdk.yaml is authoritative; the directory name is a fallback

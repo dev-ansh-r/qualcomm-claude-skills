@@ -1,6 +1,6 @@
 ---
 name: qualcomm-sdk-preflight
-description: Verify a QAIRT/QNN SDK install is complete and usable before converting a model, and locate the documentation that matches the installed version. Checks SDK dependency scripts, HTP backend libraries, Python bindings, ONNX/ONNXRuntime versions and cross-toolchain presence, then finds the version-correct docs (SDK-local HTML first, vendor site second). Use before a first conversion on a new machine, after an SDK upgrade, or when a converter fails with import or library errors.
+description: Verify a host can run the QAIRT/QNN toolchain at all (it is x86_64 Linux only - not Windows or macOS) and that the SDK install is complete and usable before converting a model, and locate the documentation that matches the installed version. Checks SDK dependency scripts, HTP backend libraries, Python bindings, ONNX/ONNXRuntime versions and cross-toolchain presence, then finds the version-correct docs (SDK-local HTML first, vendor site second). Use before a first conversion on a new machine, after an SDK upgrade, or when a converter fails with import or library errors.
 ---
 
 # QAIRT / QNN SDK preflight
@@ -10,6 +10,33 @@ docs for **the version installed** rather than the newest published.
 
 Assumes `qualcomm-env-discovery` has run and `.qualcomm-env` exists. If not, run
 that first — this skill needs `QC_QNN_SDK_ROOT`.
+
+## Part 0 — can this host run the SDK at all?
+
+Check this before anything else. It is a different question from "is the SDK
+installed", and it has a different answer.
+
+```sh
+uname -s     # Linux / MINGW64_NT-* / Darwin
+uname -m     # must be x86_64
+```
+
+**The QAIRT converters ship only as `bin/x86_64-linux-clang`.** There is no
+Windows or macOS build. On a non-Linux host the answer is not "install the
+SDK" — it is "use a different host", and no amount of installing will change
+that. Say so immediately rather than working through Part 1 and reporting seven
+failures that all have one cause.
+
+| Host | Verdict |
+|---|---|
+| x86_64 Linux | Can be the build host. Continue to Part 1 |
+| **Windows** | **Cannot.** Git Bash and MSYS do not help — they are not Linux. **WSL2 does**, and is the usual answer |
+| macOS | Cannot. Drive a Linux build host from it |
+| aarch64 (the board) | Not a build host. It runs the output, it does not produce it |
+
+A Windows or macOS workstation is still perfectly useful — it edits the source,
+drives the build over SSH and deploys. That is the normal arrangement, not a
+degraded one. See `qualcomm-cross-compile` for the loop.
 
 ## Part 1 — dependency check
 
@@ -149,7 +176,18 @@ answer is on disk.
 
 Produce a go/no-go, not a log dump:
 
+If Part 0 failed, the report is one line, not a table:
+
 ```text
+VERDICT: this host cannot run the QAIRT toolchain (Windows/macOS).
+         Nothing to install. Use a Linux build host (WSL2 counts) and
+         re-run this skill there.
+```
+
+Otherwise:
+
+```text
+Host             x86_64 Linux        OK
 QAIRT            2.37.1.250807       OK
 HTP archs        hexagon-v68,v73     OK  (v68 present - QCS6490 target)
 Python bindings  qti.aisw importable OK

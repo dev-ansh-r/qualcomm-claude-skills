@@ -12,3 +12,7 @@
 *.dlc binary
 *.so  binary
 *.raw binary
+
+# extensionless files need explicit LF too
+LICENSE text eol=lf
+NOTICE  text eol=lf

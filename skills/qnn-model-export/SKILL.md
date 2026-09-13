@@ -212,9 +212,14 @@ classic flow consuming AIMET output directly.
 The proven pattern passes **both**, and they do different jobs:
 
 ```sh
-qnn-onnx-converter     --input_network model_adapted.onnx     --quantization_overrides model_w8a16.encodings \   # AIMET's ranges
-    --input_list  real_vectors/input_list.txt \         # real activations
-    --act_bw 16 --weight_bw 8 --bias_bw 32     -d <input_name> <dims>
+# --quantization_overrides = AIMET's ranges
+# --input_list             = real activations for what they do not cover
+qnn-onnx-converter \
+    --input_network          model_adapted.onnx \
+    --quantization_overrides model_w8a16.encodings \
+    --input_list             real_vectors/input_list.txt \
+    --act_bw 16 --weight_bw 8 --bias_bw 32 \
+    -d <input_name> <dims>
 ```
 
 - `--quantization_overrides` supplies the per-tensor scale/offset AIMET
@@ -376,8 +381,8 @@ eMMC-backed filesystem can trigger a firmware watchdog reset with no log entry
 
 | Symptom | Cause |
 |---|---|
-| `unrecognized arguments: --act_bw` | Wrong flag. Use `--act_bitwidth` |
-| Unsupported op at convert time | Op has no HTP implementation. Check the SDK-local op-support doc for **your HTP arch**, then replace the op or add `--float_fallback` |
+| `unrecognized arguments: <flag>` | That flag is not in your SDK version. Check `--help`, or the extract from `qualcomm-sdk-docs`. Note `--act_bw` and `--act_bitwidth` are both valid aliases |
+| Unsupported op at convert time | Op has no HTP implementation. Check the op-support doc for **your HTP arch** and replace the op. Reach for `--float_fallback` only after confirming your architecture has FP16 — on v68 it makes the model unloadable |
 | Converts, garbage output | Calibration data unrepresentative, or an int64 input got quantized — add `--input_encoding <name> other` |
 | `command not found` after sourcing | eSDK sourced after QAIRT. Fresh shell, correct order |
 | Exits 0, no output file | Relative path plus the eSDK changed your cwd. Use absolute paths |

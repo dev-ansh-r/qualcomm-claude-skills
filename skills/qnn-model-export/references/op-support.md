@@ -91,10 +91,13 @@ Two practical consequences:
 ## Mixed precision
 
 When one block dominates the error, keeping *that block* at higher precision is
-cheaper than raising the whole graph. In the classic flow your lever is
-`--float_fallback` plus `--float_bw 32`, which is coarse. For genuine per-op
-control, use the AIMET path (`aimet-quantization` → `qnn-context-binary`) —
-that is the main reason to prefer it for production.
+cheaper than raising the whole graph.
+
+Converter flags alone are coarse: `--float_fallback` plus `--float_bw 32` lets
+ops escape to float wholesale, and on an architecture without FP16 that makes
+the model unloadable. For genuine per-op control, use **AIMET**
+(`aimet-quantization`) and pass the resulting `.encodings` via
+`--quantization_overrides` — which **either** conversion route accepts.
 
 ## Benchmark honestly
 
